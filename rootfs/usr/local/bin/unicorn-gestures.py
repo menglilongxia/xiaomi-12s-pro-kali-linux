@@ -47,6 +47,10 @@ EVIOCRMFF = 0x40044581
 FF_RUMBLE = 0x50
 
 XK_Control_L = 0xFFE3
+XK_equal = 0x003D
+XK_minus = 0x002D
+XK_KP_Add = 0xFFAB
+XK_KP_Subtract = 0xFFAD
 
 SCREEN_W = 3200.0
 SCREEN_H = 1440.0
@@ -108,6 +112,8 @@ class X11Test:
 
         self.dpy = None
         self.ctrl_kc = 37
+        self.plus_kc = 86
+        self.minus_kc = 82
         self.lock = threading.Lock()
         self.ensure_connected()
 
@@ -121,6 +127,10 @@ class X11Test:
             kc = self.x11.XKeysymToKeycode(self.dpy, XK_Control_L)
             if kc:
                 self.ctrl_kc = kc
+            pk = self.x11.XKeysymToKeycode(self.dpy, XK_KP_Add)
+            mk = self.x11.XKeysymToKeycode(self.dpy, XK_KP_Subtract)
+            if pk: self.plus_kc = pk
+            if mk: self.minus_kc = mk
             return True
         return False
 
@@ -131,17 +141,38 @@ class X11Test:
             self.xtst.XTestFakeButtonEvent(self.dpy, 1, 0, 0)
             self.x11.XFlush(self.dpy)
 
-    def zoom_step(self, zoom_in, mx, my):
-        btn = 4 if zoom_in else 5
+    def _active_wm_class(self):
+        try:
+            env = os.environ.copy()
+            env["DISPLAY"] = ":0"
+            env["XAUTHORITY"] = detect_xauth()
+            out = subprocess.check_output(
+                ["xdotool", "getactivewindow", "getwindowclassname"],
+                env=env, stderr=subprocess.DEVNULL, timeout=0.2
+            ).decode("utf-8", "ignore").strip().lower()
+            return out
+        except Exception:
+            return ""
+
+    def zoom_step(self, zoom_in, mx, my, use_keys=False):
         with self.lock:
             if not self.ensure_connected():
                 return
-            self.xtst.XTestFakeMotionEvent(self.dpy, -1, int(mx), int(my), 0)
-            self.xtst.XTestFakeKeyEvent(self.dpy, self.ctrl_kc, 1, 0)
-            self.xtst.XTestFakeButtonEvent(self.dpy, btn, 1, 0)
-            self.xtst.XTestFakeButtonEvent(self.dpy, btn, 0, 0)
-            self.xtst.XTestFakeKeyEvent(self.dpy, self.ctrl_kc, 0, 0)
-            self.x11.XFlush(self.dpy)
+            if use_keys:
+                kc = self.plus_kc if zoom_in else self.minus_kc
+                self.xtst.XTestFakeKeyEvent(self.dpy, self.ctrl_kc, 1, 0)
+                self.xtst.XTestFakeKeyEvent(self.dpy, kc, 1, 0)
+                self.xtst.XTestFakeKeyEvent(self.dpy, kc, 0, 0)
+                self.xtst.XTestFakeKeyEvent(self.dpy, self.ctrl_kc, 0, 0)
+                self.x11.XFlush(self.dpy)
+            else:
+                btn = 4 if zoom_in else 5
+                self.xtst.XTestFakeMotionEvent(self.dpy, -1, int(mx), int(my), 0)
+                self.xtst.XTestFakeKeyEvent(self.dpy, self.ctrl_kc, 1, 0)
+                self.xtst.XTestFakeButtonEvent(self.dpy, btn, 1, 0)
+                self.xtst.XTestFakeButtonEvent(self.dpy, btn, 0, 0)
+                self.xtst.XTestFakeKeyEvent(self.dpy, self.ctrl_kc, 0, 0)
+                self.x11.XFlush(self.dpy)
 
     def scroll_button(self, btn, count=1):
         with self.lock:
@@ -445,6 +476,8 @@ class GestureEngine:
                 self.tf_mode = "pinch"
                 self.xtest.cancel_drag()
                 self.tf_last_dist = self.tf_d0
+                cls = self.xtest._active_wm_class()
+                self.tf_zoom_keys = any(k in cls for k in ("telegram", "terminal", "code", "kitty", "konsole"))
             elif dm >= 36.0 and dm > 1.15 * dd:
                 self.tf_mode = "scroll"
                 self.xtest.cancel_drag()
@@ -456,7 +489,7 @@ class GestureEngine:
             diff = dist - self.tf_last_dist
             while abs(diff) >= step:
                 zoom_in = diff > 0
-                self.xtest.zoom_step(zoom_in, mx, my)
+                self.xtest.zoom_step(zoom_in, mx, my, use_keys=getattr(self, 'tf_zoom_keys', False))
                 self.haptics.pulse(10, 0x5000)
                 self.tf_last_dist += step if zoom_in else -step
                 diff = dist - self.tf_last_dist
