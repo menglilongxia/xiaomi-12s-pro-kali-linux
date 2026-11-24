@@ -38,7 +38,8 @@ if [ "$TARGET" = "/" ]; then
         unicorn-cam-ready.service \
         unicorn-zram.service \
         unicorn-batt-guard.service \
-        unicorn-wifi-watchdog.service 2>/dev/null || true
+        unicorn-wifi-watchdog.service \
+        unicorn-gestures.service 2>/dev/null || true
 fi
 
 echo "Done! Remember to extract device firmware with scripts/extract-firmware-from-device.sh before rebooting."

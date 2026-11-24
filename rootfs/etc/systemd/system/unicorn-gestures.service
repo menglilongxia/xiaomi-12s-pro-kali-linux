@@ -1,0 +1,12 @@
+[Unit]
+Description=Xiaomi 12S Pro Android-Style Touch Gestures & X-Axis Haptics
+After=multi-user.target lightdm.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/unicorn-gestures.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
