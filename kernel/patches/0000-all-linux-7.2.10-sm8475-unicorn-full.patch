@@ -1,0 +1,4803 @@
+diff --git a/Documentation/devicetree/bindings/media/qcom,sm8550-iris.yaml b/Documentation/devicetree/bindings/media/qcom,sm8550-iris.yaml
+index 0400ca1bf..5f3ca956c 100644
+--- a/Documentation/devicetree/bindings/media/qcom,sm8550-iris.yaml
++++ b/Documentation/devicetree/bindings/media/qcom,sm8550-iris.yaml
+@@ -24,6 +24,7 @@ properties:
+           - const: qcom,sm8550-iris
+       - enum:
+           - qcom,qcs8300-iris
++          - qcom,sm8450-iris
+           - qcom,sm8550-iris
+           - qcom,sm8650-iris
+           - qcom,x1p42100-iris
+diff --git a/Documentation/devicetree/bindings/net/qcom,ipa.yaml b/Documentation/devicetree/bindings/net/qcom,ipa.yaml
+index 68ec76fe4..db91bfaaf 100644
+--- a/Documentation/devicetree/bindings/net/qcom,ipa.yaml
++++ b/Documentation/devicetree/bindings/net/qcom,ipa.yaml
+@@ -53,6 +53,7 @@ properties:
+           - qcom,sdx65-ipa
+           - qcom,sm6350-ipa
+           - qcom,sm8350-ipa
++          - qcom,sm8450-ipa
+           - qcom,sm8550-ipa
+       - items:
+           - enum:
+diff --git a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
+index dae440eca..cc2eb721a 100644
+--- a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
++++ b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
+@@ -68,6 +68,24 @@ properties:
+     $ref: /schemas/types.yaml#/definitions/string
+     description: User visible long sound card name
+ 
++  clocks:
++    minItems: 1
++    maxItems: 5
++    description:
++      DSP bit clocks of MI2S ports whose codecs need the clock running before
++      they are powered up (e.g. amplifiers locking a PLL to it).
++
++  clock-names:
++    minItems: 1
++    maxItems: 5
++    items:
++      enum:
++        - primary-mi2s
++        - secondary-mi2s
++        - tertiary-mi2s
++        - quaternary-mi2s
++        - quinary-mi2s
++
+ patternProperties:
+   ".*-dai-link$":
+     description:
+diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
+index 6f33c4e2f..63fed29fd 100644
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -373,6 +373,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= sm8450-qrd.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= sm8450-samsung-r0q.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= sm8450-sony-xperia-nagara-pdx223.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= sm8450-sony-xperia-nagara-pdx224.dtb
++dtb-$(CONFIG_ARCH_QCOM) += sm8475-xiaomi-unicorn.dtb
+ 
+ sm8550-hdk-display-card-dtbs	:= sm8550-hdk.dtb sm8550-hdk-display-card.dtbo
+ sm8550-hdk-display-card-rear-camera-card-dtbs	:= sm8550-hdk.dtb sm8550-hdk-display-card.dtbo sm8550-hdk-rear-camera-card.dtbo
+@@ -457,3 +458,4 @@ x1p42100-lenovo-thinkbook-16-el2-dtbs	:= x1p42100-lenovo-thinkbook-16.dtb x1-el2
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1p42100-lenovo-thinkbook-16.dtb x1p42100-lenovo-thinkbook-16-el2.dtb
+ x1p64100-microsoft-denali-el2-dtbs	:= x1p64100-microsoft-denali.dtb x1-el2.dtbo
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1p64100-microsoft-denali.dtb x1p64100-microsoft-denali-el2.dtb
++dtb-$(CONFIG_ARCH_QCOM) += sm8475-xiaomi-unicorn-mdss120.dtb
+diff --git a/arch/arm64/boot/dts/qcom/sm8450.dtsi b/arch/arm64/boot/dts/qcom/sm8450.dtsi
+index 18ab94de4..e8ec25d2f 100644
+--- a/arch/arm64/boot/dts/qcom/sm8450.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8450.dtsi
+@@ -3072,6 +3072,46 @@ vamacro: codec@33f0000 {
+ 			status = "disabled";
+ 		};
+ 
++		ipa: ipa@3f40000 {
++			compatible = "qcom,sm8450-ipa";
++
++			iommus = <&apps_smmu 0x5c0 0x0>,
++				 <&apps_smmu 0x5c2 0x0>;
++			reg = <0 0x03f40000 0 0x10000>,
++			      <0 0x03f50000 0 0x5000>,
++			      <0 0x03e04000 0 0xfc000>;
++			reg-names = "ipa-reg",
++				    "ipa-shared",
++				    "gsi";
++
++			interrupts-extended = <&intc GIC_SPI 654 IRQ_TYPE_EDGE_RISING>,
++					      <&intc GIC_SPI 432 IRQ_TYPE_LEVEL_HIGH>,
++					      <&ipa_smp2p_in 0 IRQ_TYPE_EDGE_RISING>,
++					      <&ipa_smp2p_in 1 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "ipa",
++					  "gsi",
++					  "ipa-clock-query",
++					  "ipa-setup-ready";
++
++			clocks = <&rpmhcc RPMH_IPA_CLK>;
++			clock-names = "core";
++
++			interconnects = <&aggre2_noc MASTER_IPA 0 &mc_virt SLAVE_EBI1 0>,
++					<&gem_noc MASTER_APPSS_PROC 0 &config_noc SLAVE_IPA_CFG 0>;
++			interconnect-names = "memory",
++					     "config";
++
++			qcom,qmp = <&aoss_qmp>;
++
++			qcom,smem-states = <&ipa_smp2p_out 0>,
++					   <&ipa_smp2p_out 1>;
++			qcom,smem-state-names = "ipa-clock-enabled-valid",
++						"ipa-clock-enabled";
++
++			status = "disabled";
++		};
++
++
+ 		remoteproc_cdsp: remoteproc@32300000 {
+ 			compatible = "qcom,sm8450-cdsp-pas";
+ 			reg = <0 0x32300000 0 0x10000>;
+@@ -3219,6 +3259,81 @@ IPCC_MPROC_SIGNAL_GLINK_QMP
+ 			};
+ 		};
+ 
++		iris: video-codec@aa00000 {
++			compatible = "qcom,sm8450-iris";
++
++			reg = <0 0x0aa00000 0 0xf0000>;
++			interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
++
++			power-domains = <&videocc VIDEO_CC_MVS0C_GDSC>,
++					<&videocc VIDEO_CC_MVS0_GDSC>,
++					<&rpmhpd RPMHPD_MXC>,
++					<&rpmhpd RPMHPD_MMCX>;
++			power-domain-names = "venus",
++					     "vcodec0",
++					     "mxc",
++					     "mmcx";
++			operating-points-v2 = <&iris_opp_table>;
++
++			clocks = <&gcc GCC_VIDEO_AXI0_CLK>,
++				 <&videocc VIDEO_CC_MVS0C_CLK>,
++				 <&videocc VIDEO_CC_MVS0_CLK>;
++			clock-names = "iface",
++				      "core",
++				      "vcodec0_core";
++
++			interconnects = <&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
++					 &config_noc SLAVE_VENUS_CFG QCOM_ICC_TAG_ACTIVE_ONLY>,
++					<&mmss_noc MASTER_VIDEO QCOM_ICC_TAG_ALWAYS
++					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
++			interconnect-names = "cpu-cfg",
++					     "video-mem";
++
++			memory-region = <&video_mem>;
++
++			resets = <&gcc GCC_VIDEO_AXI0_CLK_ARES>;
++			reset-names = "bus";
++
++			iommus = <&apps_smmu 0x2180 0x400>,
++				 <&apps_smmu 0x2187 0x400>;
++			dma-coherent;
++
++			/*
++			 * IRIS firmware is signed by vendors, only
++			 * enable on boards where the proper signed firmware
++			 * is available.
++			 */
++			status = "disabled";
++
++			iris_opp_table: opp-table {
++				compatible = "operating-points-v2";
++
++				opp-240000000 {
++					opp-hz = /bits/ 64 <240000000>;
++					required-opps = <&rpmhpd_opp_svs>,
++							<&rpmhpd_opp_low_svs>;
++				};
++
++				opp-338000000 {
++					opp-hz = /bits/ 64 <338000000>;
++					required-opps = <&rpmhpd_opp_svs>,
++							<&rpmhpd_opp_svs>;
++				};
++
++				opp-366000000 {
++					opp-hz = /bits/ 64 <366000000>;
++					required-opps = <&rpmhpd_opp_svs>,
++							<&rpmhpd_opp_svs_l1>;
++				};
++
++				opp-444000000 {
++					opp-hz = /bits/ 64 <444000000>;
++					required-opps = <&rpmhpd_opp_svs_l1>,
++							<&rpmhpd_opp_nom>;
++				};
++			};
++		};
++
+ 		videocc: clock-controller@aaf0000 {
+ 			compatible = "qcom,sm8450-videocc";
+ 			reg = <0 0x0aaf0000 0 0x10000>;
+@@ -3311,6 +3426,193 @@ cci1_i2c1: i2c-bus@1 {
+ 			};
+ 		};
+ 
++		camss: isp@acb7000 {
++			compatible = "qcom,sm8450-camss";
++
++			reg = <0x0 0x0acb7000 0x0 0x0d00>,
++			      <0x0 0x0acb9000 0x0 0x0d00>,
++			      <0x0 0x0acbb000 0x0 0x0d00>,
++			      <0x0 0x0acc6000 0x0 0x0a00>,
++			      <0x0 0x0acca000 0x0 0x0a00>,
++			      <0x0 0x0acb6000 0x0 0x1000>,
++			      <0x0 0x0ace4000 0x0 0x2000>,
++			      <0x0 0x0ace6000 0x0 0x2000>,
++			      <0x0 0x0ace8000 0x0 0x2000>,
++			      <0x0 0x0acea000 0x0 0x2000>,
++			      <0x0 0x0acec000 0x0 0x2000>,
++			      <0x0 0x0acee000 0x0 0x2000>,
++			      <0x0 0x0ac62000 0x0 0xf000>,
++			      <0x0 0x0ac71000 0x0 0xf000>,
++			      <0x0 0x0ac80000 0x0 0xf000>,
++			      /* vfe_lite windows follow the sm8550 layout: csid_lite + 0x1000 */
++			      <0x0 0x0acc7000 0x0 0x1800>,
++			      <0x0 0x0accb000 0x0 0x1800>;
++			reg-names = "csid0",
++				    "csid1",
++				    "csid2",
++				    "csid_lite0",
++				    "csid_lite1",
++				    "csid_wrapper",
++				    "csiphy0",
++				    "csiphy1",
++				    "csiphy2",
++				    "csiphy3",
++				    "csiphy4",
++				    "csiphy5",
++				    "vfe0",
++				    "vfe1",
++				    "vfe2",
++				    "vfe_lite0",
++				    "vfe_lite1";
++
++			clocks = <&camcc CAM_CC_CAMNOC_AXI_CLK>,
++				 <&camcc CAM_CC_CPAS_AHB_CLK>,
++				 <&camcc CAM_CC_CPAS_FAST_AHB_CLK>,
++				 <&camcc CAM_CC_CPAS_IFE_LITE_CLK>,
++				 <&camcc CAM_CC_CPAS_IFE_0_CLK>,
++				 <&camcc CAM_CC_CPAS_IFE_1_CLK>,
++				 <&camcc CAM_CC_CPAS_IFE_2_CLK>,
++				 <&camcc CAM_CC_CSID_CLK>,
++				 <&camcc CAM_CC_CSIPHY0_CLK>,
++				 <&camcc CAM_CC_CSI0PHYTIMER_CLK>,
++				 <&camcc CAM_CC_CSIPHY1_CLK>,
++				 <&camcc CAM_CC_CSI1PHYTIMER_CLK>,
++				 <&camcc CAM_CC_CSIPHY2_CLK>,
++				 <&camcc CAM_CC_CSI2PHYTIMER_CLK>,
++				 <&camcc CAM_CC_CSIPHY3_CLK>,
++				 <&camcc CAM_CC_CSI3PHYTIMER_CLK>,
++				 <&camcc CAM_CC_CSIPHY4_CLK>,
++				 <&camcc CAM_CC_CSI4PHYTIMER_CLK>,
++				 <&camcc CAM_CC_CSIPHY5_CLK>,
++				 <&camcc CAM_CC_CSI5PHYTIMER_CLK>,
++				 <&camcc CAM_CC_CSID_CSIPHY_RX_CLK>,
++				 <&gcc GCC_CAMERA_HF_AXI_CLK>,
++				 <&camcc CAM_CC_IFE_0_CLK>,
++				 <&camcc CAM_CC_IFE_0_FAST_AHB_CLK>,
++				 <&camcc CAM_CC_IFE_1_CLK>,
++				 <&camcc CAM_CC_IFE_1_FAST_AHB_CLK>,
++				 <&camcc CAM_CC_IFE_2_CLK>,
++				 <&camcc CAM_CC_IFE_2_FAST_AHB_CLK>,
++				 <&camcc CAM_CC_IFE_LITE_CLK>,
++				 <&camcc CAM_CC_IFE_LITE_AHB_CLK>,
++				 <&camcc CAM_CC_IFE_LITE_CPHY_RX_CLK>,
++				 <&camcc CAM_CC_IFE_LITE_CSID_CLK>;
++			clock-names = "camnoc_axi",
++				      "cpas_ahb",
++				      "cpas_fast_ahb_clk",
++				      "cpas_ife_lite",
++				      "cpas_vfe0",
++				      "cpas_vfe1",
++				      "cpas_vfe2",
++				      "csid",
++				      "csiphy0",
++				      "csiphy0_timer",
++				      "csiphy1",
++				      "csiphy1_timer",
++				      "csiphy2",
++				      "csiphy2_timer",
++				      "csiphy3",
++				      "csiphy3_timer",
++				      "csiphy4",
++				      "csiphy4_timer",
++				      "csiphy5",
++				      "csiphy5_timer",
++				      "csiphy_rx",
++				      "gcc_axi_hf",
++				      "vfe0",
++				      "vfe0_fast_ahb",
++				      "vfe1",
++				      "vfe1_fast_ahb",
++				      "vfe2",
++				      "vfe2_fast_ahb",
++				      "vfe_lite",
++				      "vfe_lite_ahb",
++				      "vfe_lite_cphy_rx",
++				      "vfe_lite_csid";
++
++			interrupts = <GIC_SPI 464 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 466 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 640 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 468 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 359 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 477 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 478 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 479 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 448 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 122 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 89 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 465 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 467 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 641 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 469 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 360 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "csid0",
++					  "csid1",
++					  "csid2",
++					  "csid_lite0",
++					  "csid_lite1",
++					  "csiphy0",
++					  "csiphy1",
++					  "csiphy2",
++					  "csiphy3",
++					  "csiphy4",
++					  "csiphy5",
++					  "vfe0",
++					  "vfe1",
++					  "vfe2",
++					  "vfe_lite0",
++					  "vfe_lite1";
++
++			interconnects = <&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
++					 &config_noc SLAVE_CAMERA_CFG QCOM_ICC_TAG_ACTIVE_ONLY>,
++					<&mmss_noc MASTER_CAMNOC_HF QCOM_ICC_TAG_ALWAYS
++					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
++			interconnect-names = "ahb",
++					     "hf_0_mnoc";
++
++			iommus = <&apps_smmu 0x800 0x460>;
++
++			power-domains = <&camcc IFE_0_GDSC>,
++					<&camcc IFE_1_GDSC>,
++					<&camcc IFE_2_GDSC>,
++					<&camcc TITAN_TOP_GDSC>;
++			power-domain-names = "ife0",
++					     "ife1",
++					     "ife2",
++					     "top";
++
++			status = "disabled";
++
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				port@0 {
++					reg = <0>;
++				};
++
++				port@1 {
++					reg = <1>;
++				};
++
++				port@2 {
++					reg = <2>;
++				};
++
++				port@3 {
++					reg = <3>;
++				};
++
++				port@4 {
++					reg = <4>;
++				};
++
++				port@5 {
++					reg = <5>;
++				};
++			};
++		};
++
+ 		camcc: clock-controller@ade0000 {
+ 			compatible = "qcom,sm8450-camcc";
+ 			reg = <0 0x0ade0000 0 0x20000>;
+diff --git a/arch/arm64/kernel/head.S b/arch/arm64/kernel/head.S
+index 87a822e5c..b64d815f6 100644
+--- a/arch/arm64/kernel/head.S
++++ b/arch/arm64/kernel/head.S
+@@ -111,8 +111,8 @@ SYM_CODE_START(primary_entry)
+ 	 * of the primary boot code to the PoC so we can safely execute it with
+ 	 * the MMU off.
+ 	 */
+-0:	adrp	x0, __idmap_text_start
+-	adr_l	x1, __idmap_text_end
++0:	adrp	x0, _text
++	adr_l	x1, _end
+ 	adr_l	x2, dcache_clean_poc
+ 	blr	x2
+ 
+diff --git a/drivers/clk/qcom/camcc-sm8450.c b/drivers/clk/qcom/camcc-sm8450.c
+index 4025db23d..ff33c6978 100644
+--- a/drivers/clk/qcom/camcc-sm8450.c
++++ b/drivers/clk/qcom/camcc-sm8450.c
+@@ -834,7 +834,7 @@ static struct clk_rcg2 cam_cc_bps_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -856,7 +856,7 @@ static struct clk_rcg2 cam_cc_camnoc_axi_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -877,7 +877,7 @@ static struct clk_rcg2 cam_cc_cci_0_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -892,7 +892,7 @@ static struct clk_rcg2 cam_cc_cci_1_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -914,7 +914,7 @@ static struct clk_rcg2 cam_cc_cphy_rx_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -935,7 +935,7 @@ static struct clk_rcg2 cam_cc_csi0phytimer_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -950,7 +950,7 @@ static struct clk_rcg2 cam_cc_csi1phytimer_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -965,7 +965,7 @@ static struct clk_rcg2 cam_cc_csi2phytimer_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -980,7 +980,7 @@ static struct clk_rcg2 cam_cc_csi3phytimer_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -995,7 +995,7 @@ static struct clk_rcg2 cam_cc_csi4phytimer_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1010,7 +1010,7 @@ static struct clk_rcg2 cam_cc_csi5phytimer_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1031,7 +1031,7 @@ static struct clk_rcg2 cam_cc_csid_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1055,7 +1055,7 @@ static struct clk_rcg2 cam_cc_fast_ahb_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1078,7 +1078,7 @@ static struct clk_rcg2 cam_cc_icp_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1102,7 +1102,7 @@ static struct clk_rcg2 cam_cc_ife_0_clk_src = {
+ 		.parent_data = cam_cc_parent_data_2,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_2),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1126,7 +1126,7 @@ static struct clk_rcg2 cam_cc_ife_1_clk_src = {
+ 		.parent_data = cam_cc_parent_data_3,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_3),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1149,7 +1149,7 @@ static struct clk_rcg2 cam_cc_ife_2_clk_src = {
+ 		.parent_data = cam_cc_parent_data_4,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_4),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1170,7 +1170,7 @@ static struct clk_rcg2 cam_cc_ife_lite_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1185,7 +1185,7 @@ static struct clk_rcg2 cam_cc_ife_lite_csid_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1208,7 +1208,7 @@ static struct clk_rcg2 cam_cc_ipe_nps_clk_src = {
+ 		.parent_data = cam_cc_parent_data_5,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_5),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1223,7 +1223,7 @@ static struct clk_rcg2 cam_cc_jpeg_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1245,7 +1245,7 @@ static struct clk_rcg2 cam_cc_mclk0_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1260,7 +1260,7 @@ static struct clk_rcg2 cam_cc_mclk1_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1275,7 +1275,7 @@ static struct clk_rcg2 cam_cc_mclk2_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1290,7 +1290,7 @@ static struct clk_rcg2 cam_cc_mclk3_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1305,7 +1305,7 @@ static struct clk_rcg2 cam_cc_mclk4_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1320,7 +1320,7 @@ static struct clk_rcg2 cam_cc_mclk5_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1335,7 +1335,7 @@ static struct clk_rcg2 cam_cc_mclk6_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1350,7 +1350,7 @@ static struct clk_rcg2 cam_cc_mclk7_clk_src = {
+ 		.parent_data = cam_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1373,7 +1373,7 @@ static struct clk_rcg2 cam_cc_qdss_debug_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1396,7 +1396,7 @@ static struct clk_rcg2 cam_cc_sfe_0_clk_src = {
+ 		.parent_data = cam_cc_parent_data_6,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_6),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1419,7 +1419,7 @@ static struct clk_rcg2 cam_cc_sfe_1_clk_src = {
+ 		.parent_data = cam_cc_parent_data_7,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_7),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1439,7 +1439,7 @@ static struct clk_rcg2 cam_cc_sleep_clk_src = {
+ 		.parent_data = cam_cc_parent_data_8,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_8),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1460,7 +1460,7 @@ static struct clk_rcg2 cam_cc_slow_ahb_clk_src = {
+ 		.parent_data = cam_cc_parent_data_0,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_0),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -1480,7 +1480,7 @@ static struct clk_rcg2 cam_cc_xo_clk_src = {
+ 		.parent_data = cam_cc_parent_data_9_ao,
+ 		.num_parents = ARRAY_SIZE(cam_cc_parent_data_9_ao),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_shared_ops,
+ 	},
+ };
+ 
+@@ -2933,7 +2933,7 @@ static struct gdsc bps_gdsc = {
+ 	.pd = {
+ 		.name = "bps_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = HW_CTRL | POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2943,7 +2943,7 @@ static struct gdsc ipe_0_gdsc = {
+ 	.pd = {
+ 		.name = "ipe_0_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = HW_CTRL | POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2953,7 +2953,7 @@ static struct gdsc sbi_gdsc = {
+ 	.pd = {
+ 		.name = "sbi_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2963,7 +2963,7 @@ static struct gdsc ife_0_gdsc = {
+ 	.pd = {
+ 		.name = "ife_0_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2973,7 +2973,7 @@ static struct gdsc ife_1_gdsc = {
+ 	.pd = {
+ 		.name = "ife_1_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2983,7 +2983,7 @@ static struct gdsc ife_2_gdsc = {
+ 	.pd = {
+ 		.name = "ife_2_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -2993,7 +2993,7 @@ static struct gdsc sfe_0_gdsc = {
+ 	.pd = {
+ 		.name = "sfe_0_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -3003,7 +3003,7 @@ static struct gdsc sfe_1_gdsc = {
+ 	.pd = {
+ 		.name = "sfe_1_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+@@ -3013,7 +3013,7 @@ static struct gdsc titan_top_gdsc = {
+ 	.pd = {
+ 		.name = "titan_top_gdsc",
+ 	},
+-	.flags = POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 
+diff --git a/drivers/firmware/efi/earlycon.c b/drivers/firmware/efi/earlycon.c
+index 3d060d599..803e31f22 100644
+--- a/drivers/firmware/efi/earlycon.c
++++ b/drivers/firmware/efi/earlycon.c
+@@ -273,3 +273,173 @@ static int __init efi_earlycon_setup(struct earlycon_device *device,
+ 	return 0;
+ }
+ EARLYCON_DECLARE(efifb, efi_earlycon_setup);
++/* ===== Fast zero-scroll 16x32 rawfb earlycon + pstore pmsg mirror (0xA7200000) ===== */
++#include <asm/early_ioremap.h>
++extern const struct font_desc font_vga_8x16;
++
++#define RAWFB_PHYS   0xB8000000UL
++#define RAWFB_W      1440U
++#define RAWFB_H      3200U
++#define RAWFB_STRIDE (RAWFB_W * 4U)
++#define RAWFB_CW     16U
++#define RAWFB_CH     32U
++#define RAWFB_COLS   (RAWFB_W / RAWFB_CW)
++#define RAWFB_ROWS   (RAWFB_H / RAWFB_CH)
++
++#define PMSG_PHYS    0xA7200000UL
++#define PMSG_SIZE    0x00200000UL
++#define PMSG_DATA_SZ (PMSG_SIZE - 12UL)
++#define PMSG_SIG     0x43474244U /* "DBGC" */
++
++static void __iomem *rawfb_va;
++static void __iomem *pmsg_va;
++static u32 pmsg_pos;
++static u32 rawfb_col;
++static u32 rawfb_row;
++static struct console *rawfb_con;
++
++static int __init rawfb_remap(void)
++{
++	if (rawfb_con) {
++		rawfb_va = memremap(RAWFB_PHYS, 0x02B00000UL, MEMREMAP_WC);
++		pmsg_va  = memremap(PMSG_PHYS, PMSG_SIZE, MEMREMAP_WC);
++	}
++	return 0;
++}
++early_initcall(rawfb_remap);
++
++static void pmsg_append(const char *s, unsigned int n)
++{
++	unsigned int i;
++	if (!n)
++		return;
++	if (pmsg_va) {
++		volatile u32 *hdr = (volatile u32 *)pmsg_va;
++		volatile u8 *data = (volatile u8 *)pmsg_va + 12;
++		hdr[0] = PMSG_SIG;
++		for (i = 0; i < n && pmsg_pos < PMSG_DATA_SZ; i++) {
++			data[pmsg_pos++] = (u8)s[i];
++		}
++		hdr[1] = pmsg_pos; /* start (next write pos) */
++		hdr[2] = pmsg_pos; /* size */
++		dsb(sy);
++	} else {
++		/* Early boot before memremap(): map first 240 KB of pmsg region */
++		u8 *m = early_ioremap(PMSG_PHYS, 0x3C000UL);
++		if (!m)
++			return;
++		((volatile u32 *)m)[0] = PMSG_SIG;
++		for (i = 0; i < n && pmsg_pos < (0x3C000U - 12U); i++) {
++			m[12 + pmsg_pos++] = (u8)s[i];
++		}
++		((volatile u32 *)m)[1] = pmsg_pos;
++		((volatile u32 *)m)[2] = pmsg_pos;
++		dsb(sy);
++		early_iounmap(m, 0x3C000UL);
++	}
++}
++
++static void rawfb_clear_row(u32 row)
++{
++	u32 y0 = row * RAWFB_CH;
++	u32 bytes = RAWFB_CH * RAWFB_STRIDE;
++	u32 *p;
++	u32 i;
++
++	if (rawfb_va) {
++		p = (u32 *)((u8 *)rawfb_va + y0 * RAWFB_STRIDE);
++		for (i = 0; i < RAWFB_CH * RAWFB_W; i++)
++			p[i] = 0xFF001020U;
++	} else {
++		p = early_ioremap(RAWFB_PHYS + (unsigned long)y0 * RAWFB_STRIDE, bytes);
++		if (!p)
++			return;
++		for (i = 0; i < RAWFB_CH * RAWFB_W; i++)
++			p[i] = 0xFF001020U;
++		early_iounmap(p, bytes);
++	}
++}
++
++static void rawfb_draw_line_buf(u32 row, const char *line, u32 len)
++{
++	u32 y0 = row * RAWFB_CH;
++	u32 bytes = RAWFB_CH * RAWFB_STRIDE;
++	u32 *p;
++	u32 c, gy, gx;
++
++	if (rawfb_va) {
++		p = (u32 *)((u8 *)rawfb_va + y0 * RAWFB_STRIDE);
++	} else {
++		p = early_ioremap(RAWFB_PHYS + (unsigned long)y0 * RAWFB_STRIDE, bytes);
++		if (!p)
++			return;
++	}
++
++	for (c = 0; c < len && c < RAWFB_COLS; c++) {
++		unsigned char ch = (unsigned char)line[c];
++		const u8 *glyph = (const u8 *)font_vga_8x16.data + ch * 16;
++		u32 x0 = c * RAWFB_CW;
++
++		for (gy = 0; gy < 16; gy++) {
++			u8 bits = glyph[gy];
++			u32 *r0 = p + (gy * 2) * RAWFB_W + x0;
++			u32 *r1 = p + (gy * 2 + 1) * RAWFB_W + x0;
++
++			for (gx = 0; gx < 8; gx++) {
++				u32 col = (bits & (0x80 >> gx)) ? 0xFFFFFFFFU : 0xFF001020U;
++				r0[gx * 2] = col;
++				r0[gx * 2 + 1] = col;
++				r1[gx * 2] = col;
++				r1[gx * 2 + 1] = col;
++			}
++		}
++	}
++
++	if (!rawfb_va)
++		early_iounmap(p, bytes);
++}
++
++static char rawfb_line[RAWFB_COLS + 2];
++
++static void rawfb_write(struct console *con, const char *s, unsigned int n)
++{
++	unsigned int i;
++
++	pmsg_append(s, n);
++
++	for (i = 0; i < n; i++) {
++		char ch = s[i];
++		if (ch == '\r')
++			continue;
++		if (ch == '\n') {
++			rawfb_draw_line_buf(rawfb_row, rawfb_line, rawfb_col);
++			rawfb_col = 0;
++			rawfb_row = (rawfb_row + 1) % RAWFB_ROWS;
++			rawfb_clear_row(rawfb_row);
++			continue;
++		}
++		if (rawfb_col < RAWFB_COLS)
++			rawfb_line[rawfb_col++] = ch;
++		if (rawfb_col >= RAWFB_COLS) {
++			rawfb_draw_line_buf(rawfb_row, rawfb_line, rawfb_col);
++			rawfb_col = 0;
++			rawfb_row = (rawfb_row + 1) % RAWFB_ROWS;
++			rawfb_clear_row(rawfb_row);
++		}
++	}
++	if (rawfb_col > 0)
++		rawfb_draw_line_buf(rawfb_row, rawfb_line, rawfb_col);
++}
++
++static int __init rawfb_earlycon_setup(struct earlycon_device *device, const char *opt)
++{
++	pmsg_pos = 0;
++	rawfb_col = 0;
++	rawfb_row = 0;
++	rawfb_clear_row(0);
++	rawfb_clear_row(1);
++	device->con->write = rawfb_write;
++	rawfb_con = device->con;
++	return 0;
++}
++EARLYCON_DECLARE(rawfb, rawfb_earlycon_setup);
+diff --git a/drivers/firmware/efi/efi-init.c b/drivers/firmware/efi/efi-init.c
+index 6103b1a08..5fcf20c51 100644
+--- a/drivers/firmware/efi/efi-init.c
++++ b/drivers/firmware/efi/efi-init.c
+@@ -228,6 +228,10 @@ static __init void reserve_regions(void)
+ 				memblock_reserve(paddr, size);
+ 		}
+ 	}
++
++	/* Xiaomi 12S Pro (unicorn) 12 GB LPDDR5 high DRAM banks (live FDT verified) */
++	early_init_dt_add_memory_arch(0x800000000ULL, 0x30000000ULL);
++	early_init_dt_add_memory_arch(0x840000000ULL, 0x240000000ULL);
+ }
+ 
+ void __init efi_init(void)
+diff --git a/drivers/firmware/efi/efi.c b/drivers/firmware/efi/efi.c
+index 0327a39d3..fac4700ea 100644
+--- a/drivers/firmware/efi/efi.c
++++ b/drivers/firmware/efi/efi.c
+@@ -883,7 +883,7 @@ void __init efi_systab_report_header(const efi_table_hdr_t *systab_hdr,
+ 	size_t i;
+ 	u16 rev;
+ 
+-	c16 = map_fw_vendor(fw_vendor, sizeof(vendor) * sizeof(efi_char16_t));
++	c16 = fw_vendor ? map_fw_vendor(fw_vendor, sizeof(vendor) * sizeof(efi_char16_t)) : NULL;
+ 	if (c16) {
+ 		for (i = 0; i < sizeof(vendor) - 1 && c16[i]; ++i)
+ 			vendor[i] = c16[i];
+diff --git a/drivers/firmware/efi/libstub/arm64.c b/drivers/firmware/efi/libstub/arm64.c
+index e57cd3de0..3209e6f69 100644
+--- a/drivers/firmware/efi/libstub/arm64.c
++++ b/drivers/firmware/efi/libstub/arm64.c
+@@ -134,6 +134,12 @@ void __noreturn efi_enter_kernel(unsigned long entrypoint,
+ {
+ 	void (* __noreturn enter_kernel)(u64, u64, u64, u64);
+ 
++	{
++		unsigned long a;
++		for (a = fdt_addr & ~63UL; a < fdt_addr + fdt_size; a += 64)
++			asm volatile("dc civac, %0" :: "r"(a) : "memory");
++		asm volatile("dsb sy" ::: "memory");
++	}
+ 	enter_kernel = (void *)entrypoint + primary_entry_offset();
+ 	enter_kernel(fdt_addr, 0, 0, 0);
+ }
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_catalog.c b/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
+index a98d550b7..1f4d6c3c2 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
+@@ -1485,7 +1485,12 @@ static const struct adreno_info a7xx_gpus[] = {
+ 			[ADRENO_FW_GMU] = "gmu_gen70000.bin",
+ 		},
+ 		.gmem = SZ_2M,
+-		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
++		/*
++		 * The GMU sometimes stops answering the GPU_SET OOB request
++		 * when the GPU powers up, and then never initialises again.
++		 * Power the GPU down less often.
++		 */
++		.inactive_period = 1000,
+ 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
+ 			  ADRENO_QUIRK_HAS_HW_APRIV |
+ 			  ADRENO_QUIRK_PREEMPTION,
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index a2f6918c4..48cb0bbdd 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -319,8 +319,13 @@ static int a6xx_gmu_start(struct a6xx_gmu *gmu)
+ 
+ 	gmu_write(gmu, REG_A6XX_GMU_CM3_SYSRESET, 0);
+ 
++	/*
++	 * Downstream allows 100 ms. The A730v3 GMU of SM8475 was measured
++	 * taking up to 12 ms to come out of reset after a power collapse
++	 * (median ~5 ms), so 10 ms failed now and then and left the GPU hung.
++	 */
+ 	ret = gmu_poll_timeout(gmu, REG_A6XX_GMU_CM3_FW_INIT_RESULT, val,
+-		(val & mask) == reset_val, 100, 10000);
++		(val & mask) == reset_val, 100, 100000);
+ 
+ 	if (ret)
+ 		DRM_DEV_ERROR(gmu->dev, "GMU firmware initialization timed out\n");
+@@ -438,8 +443,14 @@ int a6xx_gmu_set_oob(struct a6xx_gmu *gmu, enum a6xx_gmu_oob_state state)
+ 		/* We may timeout because the GMU is temporarily wedged from
+ 		 * pending faults from the GPU and we are taking a devcoredump.
+ 		 * Wait until the MMU is resumed and try again.
++		 *
++		 * Bound the wait: the fault handler takes gpu->lock to capture
++		 * the devcoredump, and GPU recovery calls in here while holding
++		 * that lock. An unbounded wait then deadlocks both.
+ 		 */
+-		wait_for_completion(&a6xx_gpu->base.fault_coredump_done);
++		if (!wait_for_completion_timeout(&a6xx_gpu->base.fault_coredump_done,
++						 msecs_to_jiffies(1000)))
++			break;
+ 	} while (true);
+ 
+ 	if (ret)
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+index 89face267..dc882d5bd 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -166,6 +166,9 @@ struct msm_dsi_host {
+ 
+ 	struct drm_display_mode *mode;
+ 	struct drm_dsc_config *dsc;
++	/* RC parameters supplied by the panel, used instead of the DSC 1.1 table */
++	struct drm_dsc_config dsc_panel_rc;
++	bool dsc_has_panel_rc;
+ 
+ 	/* connected device info */
+ 	unsigned int channel;
+@@ -1732,8 +1735,12 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
+ 	msm_host->lanes = dsi->lanes;
+ 	msm_host->format = dsi->format;
+ 	msm_host->mode_flags = dsi->mode_flags;
+-	if (dsi->dsc)
++	if (dsi->dsc) {
+ 		msm_host->dsc = dsi->dsc;
++		msm_host->dsc_panel_rc = *dsi->dsc;
++		msm_host->dsc_has_panel_rc =
++			dsi->dsc->rc_range_params[0].range_max_qp != 0;
++	}
+ 
+ 	if (msm_host->format == MIPI_DSI_FMT_RGB101010) {
+ 		if (!msm_dsi_host_version_geq(msm_host, MSM_DSI_VER_MAJOR_6G,
+@@ -1920,6 +1927,24 @@ static int dsi_populate_dsc_params(struct msm_dsi_host *msm_host, struct drm_dsc
+ 		return ret;
+ 	}
+ 
++	/*
++	 * Some panel DDICs (e.g. Novatek ones set up by a vendor command) use
++	 * fixed, vendor-tuned RC parameters; the encoder has to match them.
++	 */
++	if (msm_host->dsc_has_panel_rc) {
++		const struct drm_dsc_config *rc = &msm_host->dsc_panel_rc;
++
++		memcpy(dsc->rc_range_params, rc->rc_range_params,
++		       sizeof(dsc->rc_range_params));
++		dsc->first_line_bpg_offset = rc->first_line_bpg_offset;
++		dsc->initial_offset = rc->initial_offset;
++		dsc->initial_xmit_delay = rc->initial_xmit_delay;
++		dsc->flatness_min_qp = rc->flatness_min_qp;
++		dsc->flatness_max_qp = rc->flatness_max_qp;
++		dsc->rc_quant_incr_limit0 = rc->rc_quant_incr_limit0;
++		dsc->rc_quant_incr_limit1 = rc->rc_quant_incr_limit1;
++	}
++
+ 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
+ 	dsc->line_buf_depth = dsc->bits_per_component + 1;
+ 
+diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
+index c2c5cf817..7df2a0d41 100644
+--- a/drivers/gpu/drm/panel/Makefile
++++ b/drivers/gpu/drm/panel/Makefile
+@@ -131,3 +131,4 @@ obj-$(CONFIG_DRM_PANEL_VISIONOX_VTDR6130) += panel-visionox-vtdr6130.o
+ obj-$(CONFIG_DRM_PANEL_VISIONOX_R66451) += panel-visionox-r66451.o
+ obj-$(CONFIG_DRM_PANEL_WIDECHIPS_WS2401) += panel-widechips-ws2401.o
+ obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
++obj-m += panel-xiaomi-l2s-38-0c-0a.o
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 5d173e0ec..6f7a0c4b3 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -793,6 +793,18 @@ config VIDEO_S5K6A3
+ 	  This is a V4L2 sensor driver for Samsung S5K6A3 raw
+ 	  camera sensor.
+ 
++config VIDEO_OV32B40
++	tristate "OmniVision OV32B40 32MP front sensor support"
++	select V4L2_CCI_I2C
++	help
++	  V4L2 camera sensor driver for OmniVision OV32B40 (32MP D-PHY, Xiaomi 12S Pro).
++
++config VIDEO_IMX707
++	tristate "Sony IMX707 50MP sensor support"
++	select V4L2_CCI_I2C
++	help
++	  V4L2 camera sensor driver for Sony IMX707 (50MP C-PHY, Xiaomi 12S Pro).
++
+ config VIDEO_S5KJN1
+ 	tristate "Samsung S5KJN1 sensor support"
+ 	select V4L2_CCI_I2C
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index e45359efe..9a248d955 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -172,3 +172,5 @@ obj-$(CONFIG_VIDEO_VPX3220) += vpx3220.o
+ obj-$(CONFIG_VIDEO_WM8739) += wm8739.o
+ obj-$(CONFIG_VIDEO_WM8775) += wm8775.o
+ obj-$(CONFIG_VIDEO_INTEL_CVS) += cvs/
++obj-$(CONFIG_VIDEO_IMX707) += imx707.o
++obj-$(CONFIG_VIDEO_OV32B40) += ov32b40.o
+diff --git a/drivers/media/platform/qcom/camss/camss-csid-680.c b/drivers/media/platform/qcom/camss/camss-csid-680.c
+index 345a67c8f..677c2fd40 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid-680.c
++++ b/drivers/media/platform/qcom/camss/camss-csid-680.c
+@@ -200,6 +200,8 @@ static void __csid_configure_rx(struct csid_device *csid,
+ 	} else {
+ 		val |= (phy->csiphy_id + CSI2_RX_CFG0_PHY_SEL_BASE_IDX)
+ 			<< CSI2_RX_CFG0_PHY_NUM_SEL;
++		if (phy->cphy)
++			val |= 1 << CSI2_RX_CFG0_PHY_TYPE_SEL;
+ 	}
+ 
+ 	writel(val, csid->base + CSID_CSI2_RX_CFG0);
+diff --git a/drivers/media/platform/qcom/camss/camss-csid-gen2.c b/drivers/media/platform/qcom/camss/camss-csid-gen2.c
+index eadcb2f7e..ebf1a5260 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid-gen2.c
++++ b/drivers/media/platform/qcom/camss/camss-csid-gen2.c
+@@ -183,6 +183,8 @@ static void __csid_configure_rx(struct csid_device *csid,
+ 	val = (lane_cnt - 1) << CSI2_RX_CFG0_NUM_ACTIVE_LANES;
+ 	val |= phy->lane_assign << CSI2_RX_CFG0_DL0_INPUT_SEL;
+ 	val |= phy->csiphy_id << CSI2_RX_CFG0_PHY_NUM_SEL;
++	if (phy->cphy)
++		val |= 1 << CSI2_RX_CFG0_PHY_TYPE_SEL;
+ 	writel_relaxed(val, csid->base + CSID_CSI2_RX_CFG0);
+ 
+ 	val = 1 << CSI2_RX_CFG1_PACKET_ECC_CORRECTION_EN;
+diff --git a/drivers/media/platform/qcom/camss/camss-csid.c b/drivers/media/platform/qcom/camss/camss-csid.c
+index 48459b46a..28375bc89 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid.c
++++ b/drivers/media/platform/qcom/camss/camss-csid.c
+@@ -1292,6 +1292,7 @@ static int csid_link_setup(struct media_entity *entity,
+ 			lane_cfg = &csiphy->cfg.csi2->lane_cfg;
+ 			csid->phy.lane_cnt = lane_cfg->num_data;
+ 			csid->phy.lane_assign = csid_get_lane_assign(lane_cfg, lane_cfg->num_data);
++			csid->phy.cphy = csiphy->cfg.csi2->cphy;
+ 			csid->tpg_linked = false;
+ 		}
+ 	}
+diff --git a/drivers/media/platform/qcom/camss/camss-csid.h b/drivers/media/platform/qcom/camss/camss-csid.h
+index 5296b10f6..00e2669db 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid.h
++++ b/drivers/media/platform/qcom/camss/camss-csid.h
+@@ -70,6 +70,7 @@ struct csid_phy_config {
+ 	u32 lane_assign;
+ 	u32 en_vc;
+ 	u8 need_vc_update;
++	bool cphy;
+ };
+ 
+ struct csid_device;
+diff --git a/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c b/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c
+index dac8d2ecf..30a58547b 100644
+--- a/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c
++++ b/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c
+@@ -49,6 +49,13 @@
+ #define CSIPHY_3PH_CMN_CSI_COMMON_STATUSn(offset, common_status_offset, n) \
+ 	((offset) + (common_status_offset) + 0x4 * (n))
+ 
++/*
++ * The C-PHY T3 settle count, in the PHY's own counter units. Taken from the
++ * same working-stream dump; the D-PHY formula below computes a value for a
++ * signalling scheme this link does not use.
++ */
++#define CSIPHY_CPHY_SETTLE_CNT		0x1d
++
+ #define CSIPHY_DEFAULT_PARAMS		0
+ #define CSIPHY_LANE_ENABLE		1
+ #define CSIPHY_SETTLE_CNT_LOWER_BYTE	2
+@@ -990,6 +997,368 @@ static irqreturn_t csiphy_isr(int irq, void *dev)
+ 	return IRQ_HANDLED;
+ }
+ 
++/*
++ * 14nm 3PH v 1.2.1 C-PHY mode, three trios. Ported from the vendor tables and
++ * then corrected against a register dump of a live, working vendor stream:
++ * the kernel the device ships differs from its published source in several
++ * values, and the dump is what the hardware demonstrably works with.
++ */
++static const struct
++csiphy_lane_regs lane_regs_sm8250_cphy[] = {
++	/* trio 0 */
++	{0x015C, 0x46, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0990, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0994, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0998, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0990, 0x08, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0994, 0x08, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0998, 0x1A, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x098C, 0xAF, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0168, 0xAC, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x016C, 0x25, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0104, 0x06, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x010C, 0x12, 0x00, CSIPHY_SETTLE_CNT_LOWER_BYTE},
++	{0x0108, 0x00, 0x00, CSIPHY_SETTLE_CNT_HIGHER_BYTE},
++	{0x0114, 0x20, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0150, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0188, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x018C, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0190, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0118, 0x3E, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x011C, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0120, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0124, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0128, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x012C, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0144, 0x22, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0160, 0x02, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x01CC, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0164, 0x33, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x01DC, 0x50, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09B0, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0800, 0x0E, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0984, 0x20, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09B4, 0x03, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0980, 0x60, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0988, 0x05, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09C0, 0x80, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09C4, 0x7D, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09C8, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09D0, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
++	/* trio 1 */
++	{0x035C, 0x46, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A90, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A94, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A98, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A90, 0x08, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A94, 0x08, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A98, 0x1A, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A8C, 0xAF, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0368, 0xAC, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x036C, 0x25, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0304, 0x06, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x030C, 0x12, 0x00, CSIPHY_SETTLE_CNT_LOWER_BYTE},
++	{0x0308, 0x00, 0x00, CSIPHY_SETTLE_CNT_HIGHER_BYTE},
++	{0x0314, 0x20, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0350, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0388, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x038C, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0390, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0318, 0x3E, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x031C, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0320, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0324, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0328, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x032C, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0344, 0x22, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0360, 0x02, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x03CC, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0364, 0x33, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x03DC, 0x50, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AB0, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0800, 0x0E, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A84, 0x20, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AB4, 0x03, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A80, 0x60, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0A88, 0x05, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AC0, 0x80, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AC4, 0x7D, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AC8, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AD0, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
++	/* trio 2 */
++	{0x055C, 0x46, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B90, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B94, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B98, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B90, 0x08, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B94, 0x08, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B98, 0x1A, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B8C, 0xAF, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0568, 0xAC, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x056C, 0x25, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0504, 0x06, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x050C, 0x12, 0x00, CSIPHY_SETTLE_CNT_LOWER_BYTE},
++	{0x0508, 0x00, 0x00, CSIPHY_SETTLE_CNT_HIGHER_BYTE},
++	{0x0514, 0x20, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0550, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0588, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x058C, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0590, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0518, 0x3E, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x051C, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0520, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0524, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0528, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x052C, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0544, 0x22, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0560, 0x02, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x05CC, 0x41, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0564, 0x33, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x05DC, 0x50, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BB0, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0800, 0x0E, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B84, 0x20, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BB4, 0x03, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B80, 0x60, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0B88, 0x05, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BC0, 0x80, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BC4, 0x7D, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BC8, 0x7F, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BD0, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
++};
++
++/*
++ * A few settings depend on the link rate. These are the writes the vendor
++ * kernel makes on this SoC for the slowest bucket, which is the one a 4.1
++ * Gbit/s link selects; faster buckets are not described yet.
++ */
++static const struct csiphy_lane_regs lane_regs_sm8250_cphy_5700[] = {
++	{0x015C, 0x66, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x035C, 0x66, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x055C, 0x66, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x09B4, 0x03, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0AB4, 0x03, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0BB4, 0x03, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0144, 0x22, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0344, 0x22, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x0544, 0x22, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x016C, 0xAD, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x036C, 0xAD, 0x00, CSIPHY_DEFAULT_PARAMS},
++	{0x056C, 0xAD, 0x00, CSIPHY_DEFAULT_PARAMS},
++};
++
++static const struct csiphy_data_rate_regs data_rate_regs_sm8250_cphy[] = {
++	{
++		/* 2.5 Gsym/s at 2.28 bits per symbol */
++		.bandwidth = 5700000000ULL,
++		.regs = lane_regs_sm8250_cphy_5700,
++		.array_size = ARRAY_SIZE(lane_regs_sm8250_cphy_5700),
++	},
++};
++
++/*
++ * 3PH v2.1.3 (SM8475) C-PHY mode, three trios: csiphy_3ph_v2_1_3_reg and the
++ * matching rate buckets of data_rate_delta_table_2_1_3 of the vendor
++ * camera-kernel driver (cam_csiphy_2_1_3_hwreg.h, GPL-2.0), selected by the
++ * "qcom,csiphy-v2.1.3" compatible the diting vendor DT uses.
++ */
++static const struct
++csiphy_lane_regs lane_regs_sm8450_cphy[] = {
++	/* trio 0 */
++	{0x0268, 0xF1, 100, CSIPHY_DEFAULT_PARAMS},
++	{0x0294, 0x09, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02F4, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02F8, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02FC, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02F0, 0x00, 2, CSIPHY_DEFAULT_PARAMS},
++	{0x02F0, 0xEF, 100, CSIPHY_DEFAULT_PARAMS},
++	{0x0204, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x020C, 0x10, 0, CSIPHY_SETTLE_CNT_LOWER_BYTE},
++	{0x0208, 0x00, 0, CSIPHY_SETTLE_CNT_HIGHER_BYTE},
++	{0x0210, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02E4, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02E8, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02EC, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0218, 0x3E, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x021C, 0x41, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0220, 0x41, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0224, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0228, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x022C, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0264, 0x01, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0284, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0244, 0xB2, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0310, 0x35, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x02BC, 0xD0, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0254, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0240, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0260, 0xA8, 0, CSIPHY_DEFAULT_PARAMS},
++	/* trio 1 */
++	{0x0668, 0xF1, 100, CSIPHY_DEFAULT_PARAMS},
++	{0x0694, 0x09, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06F4, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06F8, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06FC, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06F0, 0x00, 2, CSIPHY_DEFAULT_PARAMS},
++	{0x06F0, 0xEF, 100, CSIPHY_DEFAULT_PARAMS},
++	{0x0604, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x060C, 0x10, 0, CSIPHY_SETTLE_CNT_LOWER_BYTE},
++	{0x0608, 0x00, 0, CSIPHY_SETTLE_CNT_HIGHER_BYTE},
++	{0x0610, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06E4, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06E8, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06EC, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0618, 0x3E, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x061C, 0x41, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0620, 0x41, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0624, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0628, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x062C, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0664, 0x01, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0684, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0644, 0xB2, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0710, 0x35, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x06BC, 0xD0, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0654, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0640, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0660, 0xA8, 0, CSIPHY_DEFAULT_PARAMS},
++	/* trio 2 */
++	{0x0A68, 0xF1, 100, CSIPHY_DEFAULT_PARAMS},
++	{0x0A94, 0x09, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AF4, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AF8, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AFC, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AF0, 0x00, 2, CSIPHY_DEFAULT_PARAMS},
++	{0x0AF0, 0xEF, 100, CSIPHY_DEFAULT_PARAMS},
++	{0x0A04, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A0C, 0x10, 0, CSIPHY_SETTLE_CNT_LOWER_BYTE},
++	{0x0A08, 0x00, 0, CSIPHY_SETTLE_CNT_HIGHER_BYTE},
++	{0x0A10, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AE4, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AE8, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0AEC, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A18, 0x3E, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A1C, 0x41, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A20, 0x41, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A24, 0x7F, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A28, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A2C, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A64, 0x01, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A84, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A44, 0xB2, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0B10, 0x35, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0ABC, 0xD0, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A54, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A40, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A60, 0xA8, 100, CSIPHY_DEFAULT_PARAMS},
++};
++
++/* up to 1700 Msym/s per trio */
++static const struct csiphy_lane_regs lane_regs_sm8450_cphy_3876[] = {
++	{0x0270, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0274, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0278, 0x2E, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0288, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x028C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x026C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0290, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0214, 0x09, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x108C, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0670, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0674, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0678, 0x2E, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0688, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x068C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x066C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0690, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0614, 0x09, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A70, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A74, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A78, 0x2E, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A88, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A8C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A6C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A90, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A14, 0x09, 0, CSIPHY_DEFAULT_PARAMS},
++};
++
++/* up to 2100 Msym/s per trio */
++static const struct csiphy_lane_regs lane_regs_sm8450_cphy_4788[] = {
++	{0x0270, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0274, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0278, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0288, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x028C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x026C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0290, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0214, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x108C, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0670, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0674, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0678, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0688, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x068C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x066C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0690, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0614, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A70, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A74, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A78, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A88, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A8C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A6C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A90, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A14, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++};
++
++/* up to 2500 Msym/s per trio */
++static const struct csiphy_lane_regs lane_regs_sm8450_cphy_5700[] = {
++	{0x0270, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0274, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0278, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0288, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x028C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x026C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0290, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0214, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x108C, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0670, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0674, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0678, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0688, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x068C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x066C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0690, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0614, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A70, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A74, 0x03, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A78, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A88, 0x20, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A8C, 0x30, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A6C, 0x3D, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A90, 0x02, 0, CSIPHY_DEFAULT_PARAMS},
++	{0x0A14, 0x00, 0, CSIPHY_DEFAULT_PARAMS},
++};
++
++static const struct csiphy_data_rate_regs data_rate_regs_sm8450_cphy[] = {
++	{
++		.bandwidth = 3876000000ULL,
++		.regs = lane_regs_sm8450_cphy_3876,
++		.array_size = ARRAY_SIZE(lane_regs_sm8450_cphy_3876),
++	},
++	{
++		.bandwidth = 4788000000ULL,
++		.regs = lane_regs_sm8450_cphy_4788,
++		.array_size = ARRAY_SIZE(lane_regs_sm8450_cphy_4788),
++	},
++	{
++		.bandwidth = 5700000000ULL,
++		.regs = lane_regs_sm8450_cphy_5700,
++		.array_size = ARRAY_SIZE(lane_regs_sm8450_cphy_5700),
++	},
++};
++
++
+ /*
+  * csiphy_settle_cnt_calc - Calculate settle count value
+  *
+@@ -1085,10 +1454,10 @@ static void csiphy_gen1_config_lanes(struct csiphy_device *csiphy,
+ }
+ 
+ static void csiphy_gen2_config_lanes(struct csiphy_device *csiphy,
+-				     u8 settle_cnt)
++				     const struct csiphy_lane_regs *r,
++				     int array_size, u8 settle_cnt)
+ {
+-	const struct csiphy_lane_regs *r = csiphy->regs->lane_regs;
+-	int i, array_size = csiphy->regs->lane_array_size;
++	int i;
+ 	u32 val;
+ 
+ 	for (i = 0; i < array_size; i++, r++) {
+@@ -1096,6 +1465,9 @@ static void csiphy_gen2_config_lanes(struct csiphy_device *csiphy,
+ 		case CSIPHY_SETTLE_CNT_LOWER_BYTE:
+ 			val = settle_cnt & 0xff;
+ 			break;
++		case CSIPHY_SETTLE_CNT_HIGHER_BYTE:
++			val = (settle_cnt >> 8) & 0xff;
++			break;
+ 		case CSIPHY_SKEW_CAL:
+ 			/* TODO: support application of skew from dt flag */
+ 			continue;
+@@ -1137,6 +1509,7 @@ static bool csiphy_is_gen2(u32 version)
+ 	case CAMSS_8280XP:
+ 	case CAMSS_8300:
+ 	case CAMSS_845:
++	case CAMSS_8450:
+ 	case CAMSS_8550:
+ 	case CAMSS_8650:
+ 	case CAMSS_8775P:
+@@ -1148,6 +1521,49 @@ static bool csiphy_is_gen2(u32 version)
+ 	return ret;
+ }
+ 
++/*
++ * csiphy_configure_data_rate - Apply the rate dependent C-PHY settings
++ *
++ * A handful of PHY registers have to match how fast the link runs. Work out
++ * the total rate on the wire and apply the first table entry that covers it.
++ */
++static void csiphy_configure_data_rate(struct csiphy_device *csiphy,
++				       struct csiphy_config *cfg, s64 link_freq)
++{
++	const struct csiphy_device_regs *regs = csiphy->regs;
++	u64 data_rate;
++	int i, j;
++
++	if (!regs->data_rate_regs || link_freq <= 0)
++		return;
++
++	/*
++	 * C-PHY moves 16 bits per 7 symbols on each trio, which the vendor
++	 * tables express as 2.28 bits per symbol. The symbol rate is twice
++	 * the V4L2 link frequency (pixel rate = link_freq * 2 * trios * 16 /
++	 * 7 / bpp). The table thresholds are
++	 * per trio, as in the vendor driver, where every rate up to the
++	 * 2.5 Gsym/s the PHY tops out at shares one register program - so
++	 * do not multiply by the trio count.
++	 */
++	data_rate = div_u64((u64)link_freq * 2 * 228, 100);
++
++	for (i = 0; i < regs->data_rate_array_size; i++) {
++		const struct csiphy_data_rate_regs *e = &regs->data_rate_regs[i];
++
++		if (data_rate > e->bandwidth)
++			continue;
++
++		for (j = 0; j < e->array_size; j++)
++			writel_relaxed(e->regs[j].reg_data,
++				       csiphy->base + e->regs[j].reg_addr);
++		return;
++	}
++
++	dev_warn_once(csiphy->camss->dev,
++		      "no C-PHY settings for a data rate of %llu\n", data_rate);
++}
++
+ static void csiphy_lanes_enable(struct csiphy_device *csiphy,
+ 				struct csiphy_config *cfg,
+ 				s64 link_freq, u8 lane_mask)
+@@ -1155,34 +1571,93 @@ static void csiphy_lanes_enable(struct csiphy_device *csiphy,
+ 	struct csiphy_lanes_cfg *c = &cfg->csi2->lane_cfg;
+ 	struct csiphy_device_regs *regs = csiphy->regs;
+ 	u8 settle_cnt;
++	u8 enable_mask;
+ 	u8 val;
+ 	int i;
+ 
+-	settle_cnt = csiphy_settle_cnt_calc(link_freq, csiphy->timer_clk_rate);
+-
+-	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
+-	for (i = 0; i < c->num_data; i++)
+-		val |= BIT(c->data[i].pos * 2);
++	if (cfg->csi2->cphy)
++		settle_cnt = CSIPHY_CPHY_SETTLE_CNT;
++	else
++		settle_cnt = csiphy_settle_cnt_calc(link_freq,
++						    csiphy->timer_clk_rate);
++
++	/*
++	 * D-PHY takes a lane per even bit plus the clock lane, while C-PHY
++	 * carries its clock in the trios and takes one odd bit per trio.
++	 */
++	if (cfg->csi2->cphy) {
++		val = 0;
++		for (i = 0; i < c->num_data; i++)
++			val |= BIT(c->data[i].pos * 2 + 1);
++	} else {
++		val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
++		for (i = 0; i < c->num_data; i++)
++			val |= BIT(c->data[i].pos * 2);
++	}
+ 
+ 	writel_relaxed(val, csiphy->base +
+ 		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 5));
+ 
++	enable_mask = val;
++
+ 	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL6_COMMON_PWRDN_B;
+ 	writel_relaxed(val, csiphy->base +
+ 		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 6));
+ 
+-	val = 0x02;
+-	writel_relaxed(val, csiphy->base +
+-		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 7));
++	if (cfg->csi2->cphy &&
++	    csiphy->camss->res->version == CAMSS_8450) {
++		/*
++		 * v2.1.3 three-phase common configuration, as the vendor
++		 * driver's csiphy_common_reg_2_1_3: CTRL7 0x7a, CTRL33 cleared.
++		 * CTRL0 is set to the three-phase reset exit value after the
++		 * trios are programmed.
++		 */
++		writel_relaxed(0x7a, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 7));
++		writel_relaxed(0x00, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 33));
++	} else if (cfg->csi2->cphy) {
++		/*
++		 * The three-phase common configuration, from the same
++		 * working-stream dump: a different mode word in CTRL7, the
++		 * trio mask mirrored into CTRL55, and two words the D-PHY
++		 * path never touches. CTRL0 is set to the value the per-trio
++		 * sequence expects to find before it reprograms it.
++		 */
++		writel_relaxed(0x52, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 7));
++		writel_relaxed(0x02, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
++		writel_relaxed(enable_mask, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 55));
++		writel_relaxed(0x0e, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 60));
++		writel_relaxed(0xcf, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 63));
++	} else {
++		val = 0x02;
++		writel_relaxed(val, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 7));
+ 
+-	val = 0x00;
+-	writel_relaxed(val, csiphy->base +
+-		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
++		val = 0x00;
++		writel_relaxed(val, csiphy->base +
++			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
++	}
+ 
+-	if (csiphy_is_gen2(csiphy->camss->res->version))
+-		csiphy_gen2_config_lanes(csiphy, settle_cnt);
+-	else
++	if (cfg->csi2->cphy) {
++		csiphy_gen2_config_lanes(csiphy, regs->lane_regs_cphy,
++					 regs->lane_array_size_cphy, settle_cnt);
++		csiphy_configure_data_rate(csiphy, cfg, link_freq);
++		/* v2.1.3: three-phase reset exit (csiphy_reset_exit_reg_2_1_3) */
++		if (csiphy->camss->res->version == CAMSS_8450)
++			writel_relaxed(0x0e, csiphy->base +
++				       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
++	} else if (csiphy_is_gen2(csiphy->camss->res->version)) {
++		csiphy_gen2_config_lanes(csiphy, regs->lane_regs,
++					 regs->lane_array_size, settle_cnt);
++	} else {
+ 		csiphy_gen1_config_lanes(csiphy, cfg, settle_cnt);
++	}
+ 
+ 	/* IRQ_MASK registers - disable all interrupts */
+ 	for (i = 11; i < 22; i++) {
+@@ -1234,11 +1709,26 @@ static int csiphy_init(struct csiphy_device *csiphy)
+ 	case CAMSS_8250:
+ 		regs->lane_regs = &lane_regs_sm8250[0];
+ 		regs->lane_array_size = ARRAY_SIZE(lane_regs_sm8250);
++		regs->lane_regs_cphy = &lane_regs_sm8250_cphy[0];
++		regs->lane_array_size_cphy = ARRAY_SIZE(lane_regs_sm8250_cphy);
++		regs->data_rate_regs = &data_rate_regs_sm8250_cphy[0];
++		regs->data_rate_array_size =
++			ARRAY_SIZE(data_rate_regs_sm8250_cphy);
+ 		break;
+ 	case CAMSS_8280XP:
+ 		regs->lane_regs = &lane_regs_sc8280xp[0];
+ 		regs->lane_array_size = ARRAY_SIZE(lane_regs_sc8280xp);
+ 		break;
++	case CAMSS_8450:
++		regs->lane_regs = &lane_regs_x1e80100[0];
++		regs->lane_array_size = ARRAY_SIZE(lane_regs_x1e80100);
++		regs->lane_regs_cphy = &lane_regs_sm8450_cphy[0];
++		regs->lane_array_size_cphy = ARRAY_SIZE(lane_regs_sm8450_cphy);
++		regs->data_rate_regs = &data_rate_regs_sm8450_cphy[0];
++		regs->data_rate_array_size =
++			ARRAY_SIZE(data_rate_regs_sm8450_cphy);
++		regs->offset = 0x1000;
++		break;
+ 	case CAMSS_X1E80100:
+ 		regs->lane_regs = &lane_regs_x1e80100[0];
+ 		regs->lane_array_size = ARRAY_SIZE(lane_regs_x1e80100);
+diff --git a/drivers/media/platform/qcom/camss/camss-csiphy.h b/drivers/media/platform/qcom/camss/camss-csiphy.h
+index 9d9657b82..e044aa08c 100644
+--- a/drivers/media/platform/qcom/camss/camss-csiphy.h
++++ b/drivers/media/platform/qcom/camss/camss-csiphy.h
+@@ -30,7 +30,7 @@ struct csiphy_lane {
+ 
+ /**
+  * struct csiphy_lanes_cfg - CSIPHY lanes configuration
+- * @num_data: number of data lanes
++ * @num_data: number of data lanes, or of trios in C-PHY mode
+  * @data:     data lanes configuration
+  * @clk:      clock lane configuration (only for D-PHY)
+  */
+@@ -42,6 +42,8 @@ struct csiphy_lanes_cfg {
+ 
+ struct csiphy_csi2_cfg {
+ 	struct csiphy_lanes_cfg lane_cfg;
++	/* C-PHY carries the clock in the data trios, so there is no clock lane */
++	bool cphy;
+ };
+ 
+ struct csiphy_config {
+@@ -88,9 +90,24 @@ struct csiphy_subdev_resources {
+ 	const struct csiphy_formats *formats;
+ };
+ 
++struct csiphy_data_rate_regs {
++	u64 bandwidth;
++	const struct csiphy_lane_regs *regs;
++	int array_size;
++};
++
+ struct csiphy_device_regs {
+ 	const struct csiphy_lane_regs *lane_regs;
+ 	int lane_array_size;
++	/* C-PHY register sequence, NULL where the SoC support is not written */
++	const struct csiphy_lane_regs *lane_regs_cphy;
++	int lane_array_size_cphy;
++	/*
++	 * Some settings depend on how fast the link runs; the first entry whose
++	 * bandwidth covers the required data rate is applied.
++	 */
++	const struct csiphy_data_rate_regs *data_rate_regs;
++	int data_rate_array_size;
+ 	u32 offset;
+ 	u32 common_status_offset;
+ };
+diff --git a/drivers/media/platform/qcom/camss/camss-vfe.c b/drivers/media/platform/qcom/camss/camss-vfe.c
+index 319d19158..b86f9ad8f 100644
+--- a/drivers/media/platform/qcom/camss/camss-vfe.c
++++ b/drivers/media/platform/qcom/camss/camss-vfe.c
+@@ -350,6 +350,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
+ 	case CAMSS_8280XP:
+ 	case CAMSS_8300:
+ 	case CAMSS_845:
++	case CAMSS_8450:
+ 	case CAMSS_8550:
+ 	case CAMSS_8650:
+ 	case CAMSS_8775P:
+@@ -2010,6 +2011,7 @@ static int vfe_bpl_align_rdi(struct vfe_device *vfe)
+ 	case CAMSS_8280XP:
+ 	case CAMSS_8300:
+ 	case CAMSS_845:
++	case CAMSS_8450:
+ 	case CAMSS_8550:
+ 	case CAMSS_8650:
+ 	case CAMSS_8775P:
+diff --git a/drivers/media/platform/qcom/camss/camss.c b/drivers/media/platform/qcom/camss/camss.c
+index 2123f6388..9b42a6a62 100644
+--- a/drivers/media/platform/qcom/camss/camss.c
++++ b/drivers/media/platform/qcom/camss/camss.c
+@@ -2977,6 +2977,335 @@ static const struct resources_icc icc_res_sc8280xp[] = {
+ 	},
+ };
+ 
++/*
++ * SM8450 CSIPHY supply loads follow the stock csiphy nodes (csi-vdd-0p9
++ * 147000 uA, csi-vdd-1p2 59400 uA).
++ */
++static const struct camss_subdev_resources csiphy_res_sm8450[] = {
++	/* CSIPHY0 */
++	{
++		.regulators = {
++			{ .supply = "vdda-phy", .init_load_uA = 147000 },
++			{ .supply = "vdda-pll", .init_load_uA = 59400 }
++		},
++		.clock = { "csiphy0", "csiphy0_timer" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000 } },
++		.reg = { "csiphy0" },
++		.interrupt = { "csiphy0" },
++		.csiphy = {
++			.id = 0,
++			.hw_ops = &csiphy_ops_3ph_1_0,
++			.formats = &csiphy_formats_sdm845
++		}
++	},
++	/* CSIPHY1 */
++	{
++		.regulators = {
++			{ .supply = "vdda-phy", .init_load_uA = 147000 },
++			{ .supply = "vdda-pll", .init_load_uA = 59400 }
++		},
++		.clock = { "csiphy1", "csiphy1_timer" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000 } },
++		.reg = { "csiphy1" },
++		.interrupt = { "csiphy1" },
++		.csiphy = {
++			.id = 1,
++			.hw_ops = &csiphy_ops_3ph_1_0,
++			.formats = &csiphy_formats_sdm845
++		}
++	},
++	/* CSIPHY2 */
++	{
++		.regulators = {
++			{ .supply = "vdda-phy", .init_load_uA = 147000 },
++			{ .supply = "vdda-pll", .init_load_uA = 59400 }
++		},
++		.clock = { "csiphy2", "csiphy2_timer" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000 } },
++		.reg = { "csiphy2" },
++		.interrupt = { "csiphy2" },
++		.csiphy = {
++			.id = 2,
++			.hw_ops = &csiphy_ops_3ph_1_0,
++			.formats = &csiphy_formats_sdm845
++		}
++	},
++	/* CSIPHY3 */
++	{
++		.regulators = {
++			{ .supply = "vdda-phy", .init_load_uA = 147000 },
++			{ .supply = "vdda-pll", .init_load_uA = 59400 }
++		},
++		.clock = { "csiphy3", "csiphy3_timer" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000 } },
++		.reg = { "csiphy3" },
++		.interrupt = { "csiphy3" },
++		.csiphy = {
++			.id = 3,
++			.hw_ops = &csiphy_ops_3ph_1_0,
++			.formats = &csiphy_formats_sdm845
++		}
++	},
++	/* CSIPHY4 */
++	{
++		.regulators = {
++			{ .supply = "vdda-phy", .init_load_uA = 147000 },
++			{ .supply = "vdda-pll", .init_load_uA = 59400 }
++		},
++		.clock = { "csiphy4", "csiphy4_timer" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000 } },
++		.reg = { "csiphy4" },
++		.interrupt = { "csiphy4" },
++		.csiphy = {
++			.id = 4,
++			.hw_ops = &csiphy_ops_3ph_1_0,
++			.formats = &csiphy_formats_sdm845
++		}
++	},
++	/* CSIPHY5 */
++	{
++		.regulators = {
++			{ .supply = "vdda-phy", .init_load_uA = 147000 },
++			{ .supply = "vdda-pll", .init_load_uA = 59400 }
++		},
++		.clock = { "csiphy5", "csiphy5_timer" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000 } },
++		.reg = { "csiphy5" },
++		.interrupt = { "csiphy5" },
++		.csiphy = {
++			.id = 5,
++			.hw_ops = &csiphy_ops_3ph_1_0,
++			.formats = &csiphy_formats_sdm845
++		}
++	}
++};
++
++static const struct camss_subdev_resources csid_res_sm8450[] = {
++	/* CSID0 */
++	{
++		.regulators = {},
++		.clock = { "csid", "csiphy_rx" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "csid0" },
++		.interrupt = { "csid0" },
++		.csid = {
++			.is_lite = false,
++			.parent_dev_ops = &vfe_parent_dev_ops,
++			.hw_ops = &csid_ops_680,
++			.formats = &csid_formats_gen2
++		}
++	},
++	/* CSID1 */
++	{
++		.regulators = {},
++		.clock = { "csid", "csiphy_rx" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "csid1" },
++		.interrupt = { "csid1" },
++		.csid = {
++			.is_lite = false,
++			.parent_dev_ops = &vfe_parent_dev_ops,
++			.hw_ops = &csid_ops_680,
++			.formats = &csid_formats_gen2
++		}
++	},
++	/* CSID2 */
++	{
++		.regulators = {},
++		.clock = { "csid", "csiphy_rx" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "csid2" },
++		.interrupt = { "csid2" },
++		.csid = {
++			.is_lite = false,
++			.parent_dev_ops = &vfe_parent_dev_ops,
++			.hw_ops = &csid_ops_680,
++			.formats = &csid_formats_gen2
++		}
++	},
++	/* CSID3 */
++	{
++		.regulators = {},
++		.clock = { "vfe_lite_csid", "vfe_lite_cphy_rx" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "csid_lite0" },
++		.interrupt = { "csid_lite0" },
++		.csid = {
++			.is_lite = true,
++			.parent_dev_ops = &vfe_parent_dev_ops,
++			.hw_ops = &csid_ops_680,
++			.formats = &csid_formats_gen2
++		}
++	},
++	/* CSID4 */
++	{
++		.regulators = {},
++		.clock = { "vfe_lite_csid", "vfe_lite_cphy_rx" },
++		.clock_rate = { { 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "csid_lite1" },
++		.interrupt = { "csid_lite1" },
++		.csid = {
++			.is_lite = true,
++			.parent_dev_ops = &vfe_parent_dev_ops,
++			.hw_ops = &csid_ops_680,
++			.formats = &csid_formats_gen2
++		}
++	}
++};
++
++/*
++ * The IFE core rates are the camcc-sm8450 ife_N_clk_src table. cpas_vfeN and
++ * cpas_ife_lite branch from the IFE core sources, so they carry no rate of
++ * their own.
++ */
++static const struct camss_subdev_resources vfe_res_sm8450[] = {
++	/* VFE0 */
++	{
++		.regulators = {},
++		.clock = { "gcc_axi_hf", "cpas_ahb", "cpas_fast_ahb_clk", "vfe0_fast_ahb",
++			   "vfe0", "cpas_vfe0", "camnoc_axi" },
++		.clock_rate = { { 0 },
++				{ 80000000 },
++				{ 300000000, 400000000 },
++				{ 300000000, 400000000 },
++				{ 432000000, 594000000, 675000000, 727000000 },
++				{ 0 },
++				{ 300000000, 400000000 } },
++		.reg = { "vfe0" },
++		.interrupt = { "vfe0" },
++		.vfe = {
++			/* vfe680 has RDI0-2; line 3 would be the unsupported PIX path */
++			.line_num = 3,
++			.is_lite = false,
++			.has_pd = true,
++			.pd_name = "ife0",
++			.hw_ops = &vfe_ops_680,
++			.formats_rdi = &vfe_formats_rdi_845,
++			.formats_pix = &vfe_formats_pix_845
++		}
++	},
++	/* VFE1 */
++	{
++		.regulators = {},
++		.clock = { "gcc_axi_hf", "cpas_ahb", "cpas_fast_ahb_clk", "vfe1_fast_ahb",
++			   "vfe1", "cpas_vfe1", "camnoc_axi" },
++		.clock_rate = { { 0 },
++				{ 80000000 },
++				{ 300000000, 400000000 },
++				{ 300000000, 400000000 },
++				{ 432000000, 594000000, 675000000, 727000000 },
++				{ 0 },
++				{ 300000000, 400000000 } },
++		.reg = { "vfe1" },
++		.interrupt = { "vfe1" },
++		.vfe = {
++			.line_num = 3,
++			.is_lite = false,
++			.has_pd = true,
++			.pd_name = "ife1",
++			.hw_ops = &vfe_ops_680,
++			.formats_rdi = &vfe_formats_rdi_845,
++			.formats_pix = &vfe_formats_pix_845
++		}
++	},
++	/* VFE2 */
++	{
++		.regulators = {},
++		.clock = { "gcc_axi_hf", "cpas_ahb", "cpas_fast_ahb_clk", "vfe2_fast_ahb",
++			   "vfe2", "cpas_vfe2", "camnoc_axi" },
++		.clock_rate = { { 0 },
++				{ 80000000 },
++				{ 300000000, 400000000 },
++				{ 300000000, 400000000 },
++				{ 432000000, 594000000, 675000000, 727000000 },
++				{ 0 },
++				{ 300000000, 400000000 } },
++		.reg = { "vfe2" },
++		.interrupt = { "vfe2" },
++		.vfe = {
++			.line_num = 3,
++			.is_lite = false,
++			.has_pd = true,
++			.pd_name = "ife2",
++			.hw_ops = &vfe_ops_680,
++			.formats_rdi = &vfe_formats_rdi_845,
++			.formats_pix = &vfe_formats_pix_845
++		}
++	},
++	/* VFE3 lite */
++	{
++		.regulators = {},
++		.clock = { "gcc_axi_hf", "cpas_ahb", "vfe_lite_ahb",
++			   "vfe_lite", "cpas_ife_lite", "camnoc_axi",
++			   "vfe_lite_csid", "vfe_lite_cphy_rx" },
++		.clock_rate = { { 0 },
++				{ 80000000 },
++				{ 300000000, 400000000 },
++				{ 400000000, 480000000 },
++				{ 0 },
++				{ 300000000, 400000000 },
++				{ 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "vfe_lite0" },
++		.interrupt = { "vfe_lite0" },
++		.vfe = {
++			.line_num = 4,
++			.is_lite = true,
++			.hw_ops = &vfe_ops_680,
++			.formats_rdi = &vfe_formats_rdi_845,
++			.formats_pix = &vfe_formats_pix_845
++		}
++	},
++	/* VFE4 lite */
++	{
++		.regulators = {},
++		.clock = { "gcc_axi_hf", "cpas_ahb", "vfe_lite_ahb",
++			   "vfe_lite", "cpas_ife_lite", "camnoc_axi",
++			   "vfe_lite_csid", "vfe_lite_cphy_rx" },
++		.clock_rate = { { 0 },
++				{ 80000000 },
++				{ 300000000, 400000000 },
++				{ 400000000, 480000000 },
++				{ 0 },
++				{ 300000000, 400000000 },
++				{ 400000000, 480000000 },
++				{ 400000000, 480000000 } },
++		.reg = { "vfe_lite1" },
++		.interrupt = { "vfe_lite1" },
++		.vfe = {
++			.line_num = 4,
++			.is_lite = true,
++			.hw_ops = &vfe_ops_680,
++			.formats_rdi = &vfe_formats_rdi_845,
++			.formats_pix = &vfe_formats_pix_845
++		}
++	}
++};
++
++static const struct resources_icc icc_res_sm8450[] = {
++	{
++		.name = "ahb",
++		.icc_bw_tbl.avg = 2097152,
++		.icc_bw_tbl.peak = 2097152,
++	},
++	{
++		.name = "hf_0_mnoc",
++		.icc_bw_tbl.avg = 2097152,
++		.icc_bw_tbl.peak = 2097152,
++	},
++};
++
+ static const struct camss_subdev_resources csiphy_res_8550[] = {
+ 	/* CSIPHY0 */
+ 	{
+@@ -4754,11 +5083,13 @@ static int camss_parse_endpoint_node(struct device *dev,
+ 	if (ret)
+ 		return ret;
+ 
+-	/*
+-	 * Most SoCs support both D-PHY and C-PHY standards, but currently only
+-	 * D-PHY is supported in the driver.
+-	 */
+-	if (vep.bus_type != V4L2_MBUS_CSI2_DPHY) {
++	switch (vep.bus_type) {
++	case V4L2_MBUS_CSI2_DPHY:
++		break;
++	case V4L2_MBUS_CSI2_CPHY:
++		csd->interface.csi2.cphy = true;
++		break;
++	default:
+ 		dev_err(dev, "Unsupported bus type %d\n", vep.bus_type);
+ 		return -EINVAL;
+ 	}
+@@ -4766,8 +5097,14 @@ static int camss_parse_endpoint_node(struct device *dev,
+ 	csd->interface.csiphy_id = vep.base.port;
+ 
+ 	mipi_csi2 = &vep.bus.mipi_csi2;
+-	lncfg->clk.pos = mipi_csi2->clock_lane;
+-	lncfg->clk.pol = mipi_csi2->lane_polarities[0];
++	/*
++	 * C-PHY embeds the clock in each trio, so data-lanes describes trios
++	 * and there is no clock lane to configure.
++	 */
++	if (!csd->interface.csi2.cphy) {
++		lncfg->clk.pos = mipi_csi2->clock_lane;
++		lncfg->clk.pol = mipi_csi2->lane_polarities[0];
++	}
+ 	lncfg->num_data = mipi_csi2->num_data_lanes;
+ 
+ 	lncfg->data = devm_kcalloc(dev,
+@@ -5695,6 +6032,20 @@ static const struct camss_resources sc7280_resources = {
+ 	.vfe_num = ARRAY_SIZE(vfe_res_7280),
+ };
+ 
++static const struct camss_resources sm8450_resources = {
++	.version = CAMSS_8450,
++	.pd_name = "top",
++	.csiphy_res = csiphy_res_sm8450,
++	.csid_res = csid_res_sm8450,
++	.vfe_res = vfe_res_sm8450,
++	.csid_wrapper_res = &csid_wrapper_res_sm8550,
++	.icc_res = icc_res_sm8450,
++	.icc_path_num = ARRAY_SIZE(icc_res_sm8450),
++	.csiphy_num = ARRAY_SIZE(csiphy_res_sm8450),
++	.csid_num = ARRAY_SIZE(csid_res_sm8450),
++	.vfe_num = ARRAY_SIZE(vfe_res_sm8450),
++};
++
+ static const struct camss_resources sm8550_resources = {
+ 	.version = CAMSS_8550,
+ 	.pd_name = "top",
+@@ -5755,6 +6106,7 @@ static const struct of_device_id camss_dt_match[] = {
+ 	{ .compatible = "qcom,sm6150-camss", .data = &sm6150_resources },
+ 	{ .compatible = "qcom,sm6350-camss", .data = &sm6350_resources },
+ 	{ .compatible = "qcom,sm8250-camss", .data = &sm8250_resources },
++	{ .compatible = "qcom,sm8450-camss", .data = &sm8450_resources },
+ 	{ .compatible = "qcom,sm8550-camss", .data = &sm8550_resources },
+ 	{ .compatible = "qcom,sm8650-camss", .data = &sm8650_resources },
+ 	{ .compatible = "qcom,x1e80100-camss", .data = &x1e80100_resources },
+diff --git a/drivers/media/platform/qcom/camss/camss.h b/drivers/media/platform/qcom/camss/camss.h
+index 93d691c8a..aeb98f527 100644
+--- a/drivers/media/platform/qcom/camss/camss.h
++++ b/drivers/media/platform/qcom/camss/camss.h
+@@ -93,6 +93,7 @@ enum camss_version {
+ 	CAMSS_8280XP,
+ 	CAMSS_8300,
+ 	CAMSS_845,
++	CAMSS_8450,
+ 	CAMSS_8550,
+ 	CAMSS_8650,
+ 	CAMSS_8775P,
+diff --git a/drivers/media/platform/qcom/iris/iris_buffer.c b/drivers/media/platform/qcom/iris/iris_buffer.c
+index 246ad0abb..04bb91299 100644
+--- a/drivers/media/platform/qcom/iris/iris_buffer.c
++++ b/drivers/media/platform/qcom/iris/iris_buffer.c
+@@ -928,9 +928,13 @@ static void iris_get_ts_metadata(struct iris_inst *inst, u64 timestamp_ns,
+ 		return;
+ 	}
+ 
++	/*
++	 * No input buffer carried this timestamp (for example an empty buffer
++	 * returned for a frame that is not shown). metadata_idx is the next
++	 * slot to write and can be one past the end of tss[], so there is no
++	 * metadata to copy.
++	 */
+ 	vbuf->flags &= ~mask;
+-	vbuf->flags |= inst->tss[inst->metadata_idx].flags;
+-	vbuf->timecode = inst->tss[inst->metadata_idx].tc;
+ }
+ 
+ int iris_vb2_buffer_done(struct iris_inst *inst, struct iris_buffer *buf)
+diff --git a/drivers/media/platform/qcom/iris/iris_ctrls.c b/drivers/media/platform/qcom/iris/iris_ctrls.c
+index 391e1fc5f..330f92ca9 100644
+--- a/drivers/media/platform/qcom/iris/iris_ctrls.c
++++ b/drivers/media/platform/qcom/iris/iris_ctrls.c
+@@ -22,6 +22,10 @@ static inline bool iris_valid_cap_id(enum platform_inst_fw_cap_type cap_id)
+ static enum platform_inst_fw_cap_type iris_get_cap_id(u32 id)
+ {
+ 	switch (id) {
++	case V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE:
++		return DISPLAY_DELAY_ENABLE;
++	case V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY:
++		return DISPLAY_DELAY;
+ 	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+ 		return PROFILE_H264;
+ 	case V4L2_CID_MPEG_VIDEO_HEVC_PROFILE:
+@@ -165,6 +169,10 @@ static u32 iris_get_v4l2_id(enum platform_inst_fw_cap_type cap_id)
+ 		return 0;
+ 
+ 	switch (cap_id) {
++	case DISPLAY_DELAY_ENABLE:
++		return V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE;
++	case DISPLAY_DELAY:
++		return V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY;
+ 	case PROFILE_H264:
+ 		return V4L2_CID_MPEG_VIDEO_H264_PROFILE;
+ 	case PROFILE_HEVC:
+@@ -507,6 +515,27 @@ int iris_set_u32(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id)
+ 					     &hfi_value, sizeof(u32));
+ }
+ 
++/*
++ * A display delay of 0 asks for pictures in decode order: each frame is
++ * returned as soon as it is decoded instead of after reordering. The
++ * firmware default (display order) is left alone otherwise.
++ */
++int iris_set_decode_order(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id)
++{
++	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
++	u32 hfi_id = inst->fw_caps[cap_id].hfi_id;
++	u32 decode_order = 1;
++
++	if (!inst->fw_caps[DISPLAY_DELAY_ENABLE].value || inst->fw_caps[DISPLAY_DELAY].value)
++		return 0;
++
++	return hfi_ops->session_set_property(inst, hfi_id,
++					     HFI_HOST_FLAGS_NONE,
++					     iris_get_port_info(inst, cap_id),
++					     HFI_PAYLOAD_U32,
++					     &decode_order, sizeof(u32));
++}
++
+ int iris_set_stage(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id)
+ {
+ 	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
+diff --git a/drivers/media/platform/qcom/iris/iris_ctrls.h b/drivers/media/platform/qcom/iris/iris_ctrls.h
+index 3c462ec91..10993b868 100644
+--- a/drivers/media/platform/qcom/iris/iris_ctrls.h
++++ b/drivers/media/platform/qcom/iris/iris_ctrls.h
+@@ -16,6 +16,7 @@ void iris_session_init_caps(struct iris_core *core);
+ int iris_set_u32_enum(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_stage(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_pipe(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
++int iris_set_decode_order(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_u32(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_profile(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+ int iris_set_level(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id);
+diff --git a/drivers/media/platform/qcom/iris/iris_hfi_gen2.c b/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
+index acc0ed8ad..d519dc007 100644
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
+@@ -252,6 +252,23 @@ static const struct platform_inst_fw_cap inst_fw_cap_sm8550_dec[] = {
+ 		.value = 1,
+ 		.hfi_id = HFI_PROP_PIC_ORDER_CNT_TYPE,
+ 	},
++	{
++		.cap_id = DISPLAY_DELAY_ENABLE,
++		.min = 0,
++		.max = 1,
++		.step_or_mask = 1,
++		.value = 0,
++		.hfi_id = HFI_PROP_DECODE_ORDER_OUTPUT,
++		.flags = CAP_FLAG_INPUT_PORT,
++		.set = iris_set_decode_order,
++	},
++	{
++		.cap_id = DISPLAY_DELAY,
++		.min = 0,
++		.max = 16383,
++		.step_or_mask = 1,
++		.value = 0,
++	},
+ 	{
+ 		.cap_id = CODED_FRAMES,
+ 		.min = CODED_FRAMES_PROGRESSIVE,
+@@ -1053,68 +1070,83 @@ static const u32 sm8550_enc_op_int_buf_tbl[] = {
+ 	BUF_SCRATCH_2,
+ };
+ 
+-const struct iris_firmware_data iris_hfi_gen2_data = {
+-	.init_hfi_ops = iris_hfi_gen2_sys_ops_init,
+-
+-	.core_arch = VIDEO_ARCH_LX,
+-
+-	.inst_fw_caps_dec = inst_fw_cap_sm8550_dec,
+-	.inst_fw_caps_dec_size = ARRAY_SIZE(inst_fw_cap_sm8550_dec),
+-	.inst_fw_caps_enc = inst_fw_cap_sm8550_enc,
+-	.inst_fw_caps_enc_size = ARRAY_SIZE(inst_fw_cap_sm8550_enc),
+-
+-	.dec_input_config_params_default =
+-		sm8550_vdec_input_config_params_default,
+-	.dec_input_config_params_default_size =
+-		ARRAY_SIZE(sm8550_vdec_input_config_params_default),
+-	.dec_input_config_params_hevc =
+-		sm8550_vdec_input_config_param_hevc,
+-	.dec_input_config_params_hevc_size =
+-		ARRAY_SIZE(sm8550_vdec_input_config_param_hevc),
+-	.dec_input_config_params_vp9 =
+-		sm8550_vdec_input_config_param_vp9,
+-	.dec_input_config_params_vp9_size =
+-		ARRAY_SIZE(sm8550_vdec_input_config_param_vp9),
+-	.dec_input_config_params_av1 =
+-		sm8550_vdec_input_config_param_av1,
+-	.dec_input_config_params_av1_size =
+-		ARRAY_SIZE(sm8550_vdec_input_config_param_av1),
+-	.dec_output_config_params =
+-		sm8550_vdec_output_config_params,
+-	.dec_output_config_params_size =
+-		ARRAY_SIZE(sm8550_vdec_output_config_params),
+-
+-	.enc_input_config_params =
+-		sm8550_venc_input_config_params,
+-	.enc_input_config_params_size =
+-		ARRAY_SIZE(sm8550_venc_input_config_params),
+-	.enc_output_config_params =
+-		sm8550_venc_output_config_params,
+-	.enc_output_config_params_size =
+-		ARRAY_SIZE(sm8550_venc_output_config_params),
++static const u32 sm8450_dec_ip_int_buf_tbl[] = {
++	BUF_BIN,
++	BUF_COMV,
++	BUF_NON_COMV,
++	BUF_LINE,
++};
+ 
+-	.dec_input_prop = sm8550_vdec_subscribe_input_properties,
+-	.dec_input_prop_size = ARRAY_SIZE(sm8550_vdec_subscribe_input_properties),
+-	.dec_output_prop_avc = sm8550_vdec_subscribe_output_properties_avc,
+-	.dec_output_prop_avc_size =
+-		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_avc),
+-	.dec_output_prop_hevc = sm8550_vdec_subscribe_output_properties_hevc,
+-	.dec_output_prop_hevc_size =
+-		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_hevc),
+-	.dec_output_prop_vp9 = sm8550_vdec_subscribe_output_properties_vp9,
+-	.dec_output_prop_vp9_size =
+-		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_vp9),
+-	.dec_output_prop_av1 = sm8550_vdec_subscribe_output_properties_av1,
+-	.dec_output_prop_av1_size =
+-		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_av1),
++#define IRIS_HFI_GEN2_COMMON_DATA \
++	.init_hfi_ops = iris_hfi_gen2_sys_ops_init, \
++	.core_arch = VIDEO_ARCH_LX, \
++	.inst_fw_caps_dec = inst_fw_cap_sm8550_dec, \
++	.inst_fw_caps_dec_size = ARRAY_SIZE(inst_fw_cap_sm8550_dec), \
++	.inst_fw_caps_enc = inst_fw_cap_sm8550_enc, \
++	.inst_fw_caps_enc_size = ARRAY_SIZE(inst_fw_cap_sm8550_enc), \
++	.dec_input_config_params_default = \
++		sm8550_vdec_input_config_params_default, \
++	.dec_input_config_params_default_size = \
++		ARRAY_SIZE(sm8550_vdec_input_config_params_default), \
++	.dec_input_config_params_hevc = \
++		sm8550_vdec_input_config_param_hevc, \
++	.dec_input_config_params_hevc_size = \
++		ARRAY_SIZE(sm8550_vdec_input_config_param_hevc), \
++	.dec_input_config_params_vp9 = \
++		sm8550_vdec_input_config_param_vp9, \
++	.dec_input_config_params_vp9_size = \
++		ARRAY_SIZE(sm8550_vdec_input_config_param_vp9), \
++	.dec_input_config_params_av1 = \
++		sm8550_vdec_input_config_param_av1, \
++	.dec_input_config_params_av1_size = \
++		ARRAY_SIZE(sm8550_vdec_input_config_param_av1), \
++	.dec_output_config_params = \
++		sm8550_vdec_output_config_params, \
++	.dec_output_config_params_size = \
++		ARRAY_SIZE(sm8550_vdec_output_config_params), \
++	.enc_input_config_params = \
++		sm8550_venc_input_config_params, \
++	.enc_input_config_params_size = \
++		ARRAY_SIZE(sm8550_venc_input_config_params), \
++	.enc_output_config_params = \
++		sm8550_venc_output_config_params, \
++	.enc_output_config_params_size = \
++		ARRAY_SIZE(sm8550_venc_output_config_params), \
++	.dec_input_prop = sm8550_vdec_subscribe_input_properties, \
++	.dec_input_prop_size = ARRAY_SIZE(sm8550_vdec_subscribe_input_properties), \
++	.dec_output_prop_avc = sm8550_vdec_subscribe_output_properties_avc, \
++	.dec_output_prop_avc_size = \
++		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_avc), \
++	.dec_output_prop_hevc = sm8550_vdec_subscribe_output_properties_hevc, \
++	.dec_output_prop_hevc_size = \
++		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_hevc), \
++	.dec_output_prop_vp9 = sm8550_vdec_subscribe_output_properties_vp9, \
++	.dec_output_prop_vp9_size = \
++		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_vp9), \
++	.dec_output_prop_av1 = sm8550_vdec_subscribe_output_properties_av1, \
++	.dec_output_prop_av1_size = \
++		ARRAY_SIZE(sm8550_vdec_subscribe_output_properties_av1), \
++	.dec_op_int_buf_tbl = sm8550_dec_op_int_buf_tbl, \
++	.dec_op_int_buf_tbl_size = ARRAY_SIZE(sm8550_dec_op_int_buf_tbl), \
++	.enc_ip_int_buf_tbl = sm8550_enc_ip_int_buf_tbl, \
++	.enc_ip_int_buf_tbl_size = ARRAY_SIZE(sm8550_enc_ip_int_buf_tbl), \
++	.enc_op_int_buf_tbl = sm8550_enc_op_int_buf_tbl, \
++	.enc_op_int_buf_tbl_size = ARRAY_SIZE(sm8550_enc_op_int_buf_tbl)
+ 
++const struct iris_firmware_data iris_hfi_gen2_data = {
++	IRIS_HFI_GEN2_COMMON_DATA,
+ 	.dec_ip_int_buf_tbl = sm8550_dec_ip_int_buf_tbl,
+ 	.dec_ip_int_buf_tbl_size = ARRAY_SIZE(sm8550_dec_ip_int_buf_tbl),
+-	.dec_op_int_buf_tbl = sm8550_dec_op_int_buf_tbl,
+-	.dec_op_int_buf_tbl_size = ARRAY_SIZE(sm8550_dec_op_int_buf_tbl),
++};
+ 
+-	.enc_ip_int_buf_tbl = sm8550_enc_ip_int_buf_tbl,
+-	.enc_ip_int_buf_tbl_size = ARRAY_SIZE(sm8550_enc_ip_int_buf_tbl),
+-	.enc_op_int_buf_tbl = sm8550_enc_op_int_buf_tbl,
+-	.enc_op_int_buf_tbl_size = ARRAY_SIZE(sm8550_enc_op_int_buf_tbl),
++/*
++ * Gen2 firmware of the VPU 2.0 core (SM8450, SM8475): no partial data
++ * buffer, and HFI_CMD_RESUME is sent without a payload, as the vendor
++ * driver does. With a payload the firmware does not resume decoding.
++ */
++const struct iris_firmware_data iris_hfi_gen2_vpu2_data = {
++	IRIS_HFI_GEN2_COMMON_DATA,
++	.dec_ip_int_buf_tbl = sm8450_dec_ip_int_buf_tbl,
++	.dec_ip_int_buf_tbl_size = ARRAY_SIZE(sm8450_dec_ip_int_buf_tbl),
++	.resume_without_payload = true,
+ };
+diff --git a/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c b/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
+index ee2730c29..919a167c7 100644
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
+@@ -1178,6 +1178,7 @@ static int iris_hfi_gen2_session_pause(struct iris_inst *inst, u32 plane)
+ static int iris_hfi_gen2_session_resume_drc(struct iris_inst *inst, u32 plane)
+ {
+ 	struct iris_inst_hfi_gen2 *inst_hfi_gen2 = to_iris_inst_hfi_gen2(inst);
++	bool no_payload = inst->core->iris_firmware_data->resume_without_payload;
+ 	u32 payload = HFI_CMD_SETTINGS_CHANGE;
+ 
+ 	iris_hfi_gen2_packet_session_command(inst,
+@@ -1186,9 +1187,9 @@ static int iris_hfi_gen2_session_resume_drc(struct iris_inst *inst, u32 plane)
+ 					     HFI_HOST_FLAGS_INTR_REQUIRED),
+ 					     iris_hfi_gen2_get_port(inst, plane),
+ 					     inst->session_id,
+-					     HFI_PAYLOAD_U32,
++					     no_payload ? HFI_PAYLOAD_NONE : HFI_PAYLOAD_U32,
+ 					     &payload,
+-					     sizeof(u32));
++					     no_payload ? 0 : sizeof(u32));
+ 
+ 	return iris_hfi_queue_cmd_write(inst->core, inst_hfi_gen2->packet,
+ 					inst_hfi_gen2->packet->size);
+@@ -1197,6 +1198,7 @@ static int iris_hfi_gen2_session_resume_drc(struct iris_inst *inst, u32 plane)
+ static int iris_hfi_gen2_session_resume_drain(struct iris_inst *inst, u32 plane)
+ {
+ 	struct iris_inst_hfi_gen2 *inst_hfi_gen2 = to_iris_inst_hfi_gen2(inst);
++	bool no_payload = inst->core->iris_firmware_data->resume_without_payload;
+ 	u32 payload = HFI_CMD_DRAIN;
+ 
+ 	iris_hfi_gen2_packet_session_command(inst,
+@@ -1205,9 +1207,9 @@ static int iris_hfi_gen2_session_resume_drain(struct iris_inst *inst, u32 plane)
+ 					     HFI_HOST_FLAGS_INTR_REQUIRED),
+ 					     iris_hfi_gen2_get_port(inst, plane),
+ 					     inst->session_id,
+-					     HFI_PAYLOAD_U32,
++					     no_payload ? HFI_PAYLOAD_NONE : HFI_PAYLOAD_U32,
+ 					     &payload,
+-					     sizeof(u32));
++					     no_payload ? 0 : sizeof(u32));
+ 
+ 	return iris_hfi_queue_cmd_write(inst->core, inst_hfi_gen2->packet,
+ 					inst_hfi_gen2->packet->size);
+diff --git a/drivers/media/platform/qcom/iris/iris_hfi_gen2_defines.h b/drivers/media/platform/qcom/iris/iris_hfi_gen2_defines.h
+index 776b21cd1..8c5a4f561 100644
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen2_defines.h
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2_defines.h
+@@ -123,6 +123,7 @@ enum hfi_flip {
+ #define HFI_PROP_PICTURE_TYPE			0x03000162
+ #define HFI_PROP_DEC_DEFAULT_HEADER		0x03000168
+ #define HFI_PROP_DEC_START_FROM_RAP_FRAME	0x03000169
++#define HFI_PROP_DECODE_ORDER_OUTPUT		0x0300015b
+ #define HFI_PROP_NO_OUTPUT			0x0300016a
+ #define HFI_PROP_BUFFER_MARK			0x0300016c
+ #define HFI_PROP_WORST_COMPRESSION_RATIO	0x03000174
+diff --git a/drivers/media/platform/qcom/iris/iris_platform_common.h b/drivers/media/platform/qcom/iris/iris_platform_common.h
+index ff48333ad..83ee9fc59 100644
+--- a/drivers/media/platform/qcom/iris/iris_platform_common.h
++++ b/drivers/media/platform/qcom/iris/iris_platform_common.h
+@@ -52,10 +52,12 @@ enum pipe_type {
+ 
+ extern const struct iris_firmware_data iris_hfi_gen1_data;
+ extern const struct iris_firmware_data iris_hfi_gen2_data;
++extern const struct iris_firmware_data iris_hfi_gen2_vpu2_data;
+ 
+ extern const struct iris_platform_data qcs8300_data;
+ extern const struct iris_platform_data sc7280_data;
+ extern const struct iris_platform_data sm8250_data;
++extern const struct iris_platform_data sm8450_data;
+ extern const struct iris_platform_data sm8550_data;
+ extern const struct iris_platform_data sm8650_data;
+ extern const struct iris_platform_data sm8750_data;
+@@ -182,6 +184,8 @@ enum platform_inst_fw_cap_type {
+ 	LAYER3_BITRATE_HEVC,
+ 	LAYER4_BITRATE_HEVC,
+ 	LAYER5_BITRATE_HEVC,
++	DISPLAY_DELAY_ENABLE,
++	DISPLAY_DELAY,
+ 	INST_FW_CAP_MAX,
+ };
+ 
+@@ -279,6 +283,9 @@ struct iris_firmware_data {
+ 	unsigned int enc_ip_int_buf_tbl_size;
+ 	const u32 *enc_op_int_buf_tbl;
+ 	unsigned int enc_op_int_buf_tbl_size;
++
++	/* HFI_CMD_RESUME without payload (Gen2 firmware of VPU 2.0 SoCs) */
++	bool resume_without_payload;
+ };
+ 
+ struct iris_firmware_desc {
+@@ -318,6 +325,8 @@ struct iris_platform_data {
+ 	u32 tz_cp_config_data_size;
+ 	u32 num_vpp_pipe;
+ 	bool no_aon;
++	/* Do not register the encoder (encoding not working on this SoC) */
++	bool no_encoder;
+ 	u32 max_session_count;
+ 	/* max number of macroblocks per frame supported */
+ 	u32 max_core_mbpf;
+diff --git a/drivers/media/platform/qcom/iris/iris_platform_vpu2.c b/drivers/media/platform/qcom/iris/iris_platform_vpu2.c
+index 6e06a3282..74f363dbe 100644
+--- a/drivers/media/platform/qcom/iris/iris_platform_vpu2.c
++++ b/drivers/media/platform/qcom/iris/iris_platform_vpu2.c
+@@ -28,6 +28,12 @@ static const struct iris_firmware_desc iris_vpu20_p4_gen1_desc = {
+ 	.fwname = "qcom/vpu/vpu20_p4.mbn",
+ };
+ 
++static const struct iris_firmware_desc iris_vpu20_p4_gen2_desc = {
++	.firmware_data = &iris_hfi_gen2_vpu2_data,
++	.get_vpu_buffer_size = iris_vpu_buf_size,
++	.fwname = "qcom/vpu/vpu20_p4_gen2.mbn",
++};
++
+ static const u32 iris_fmts_vpu2_dec[] = {
+ 	[IRIS_FMT_H264] = V4L2_PIX_FMT_H264,
+ 	[IRIS_FMT_HEVC] = V4L2_PIX_FMT_HEVC,
+@@ -53,6 +59,10 @@ static const struct icc_info iris_icc_info_vpu2[] = {
+ 
+ static const char * const iris_clk_reset_table_vpu2[] = { "bus", "core" };
+ 
++static const char * const sm8450_clk_reset_table[] = { "bus" };
++
++static const char * const sm8450_opp_pd_table[] = { "mxc", "mmcx" };
++
+ static const char * const iris_pmdomain_table_vpu2[] = { "venus", "vcodec0" };
+ 
+ static const struct tz_cp_config tz_cp_config_vpu2[] = {
+@@ -121,3 +131,41 @@ const struct iris_platform_data sm8250_data = {
+ 	.max_core_mbpf = NUM_MBS_8K,
+ 	.max_core_mbps = ((7680 * 4320) / 256) * 60,
+ };
++
++/*
++ * SM8450 and SM8475 have the IRIS2 (VPU 2.0) core of SM8250, but their
++ * firmware speaks the Gen2 HFI.
++ */
++const struct iris_platform_data sm8450_data = {
++	.firmware_desc = &iris_vpu20_p4_gen2_desc,
++	.vpu_ops = &iris_vpu2_ops,
++	.icc_tbl = iris_icc_info_vpu2,
++	.icc_tbl_size = ARRAY_SIZE(iris_icc_info_vpu2),
++	.clk_rst_tbl = sm8450_clk_reset_table,
++	.clk_rst_tbl_size = ARRAY_SIZE(sm8450_clk_reset_table),
++	.bw_tbl_dec = sm8250_bw_table_dec,
++	.bw_tbl_dec_size = ARRAY_SIZE(sm8250_bw_table_dec),
++	.pmdomain_tbl = iris_pmdomain_table_vpu2,
++	.pmdomain_tbl_size = ARRAY_SIZE(iris_pmdomain_table_vpu2),
++	.opp_pd_tbl = sm8450_opp_pd_table,
++	.opp_pd_tbl_size = ARRAY_SIZE(sm8450_opp_pd_table),
++	.clk_tbl = sm8250_clk_table,
++	.clk_tbl_size = ARRAY_SIZE(sm8250_clk_table),
++	.opp_clk_tbl = sm8250_opp_clk_table,
++	/* Upper bound of DMA address range */
++	.dma_mask = 0xe0000000 - 1,
++	.inst_iris_fmts = iris_fmts_vpu2_dec,
++	.inst_iris_fmts_size = ARRAY_SIZE(iris_fmts_vpu2_dec),
++	.inst_caps = &platform_inst_cap_vpu2,
++	.tz_cp_config_data = tz_cp_config_vpu2,
++	.tz_cp_config_data_size = ARRAY_SIZE(tz_cp_config_vpu2),
++	.num_vpp_pipe = 4,
++	/*
++	 * The encoder hangs the firmware at the start of a session and the
++	 * next register access resets the SoC; keep it off until fixed.
++	 */
++	.no_encoder = true,
++	.max_session_count = 16,
++	.max_core_mbpf = NUM_MBS_8K,
++	.max_core_mbps = ((7680 * 4320) / 256) * 60,
++};
+diff --git a/drivers/media/platform/qcom/iris/iris_probe.c b/drivers/media/platform/qcom/iris/iris_probe.c
+index c2dcb50a2..8951760ee 100644
+--- a/drivers/media/platform/qcom/iris/iris_probe.c
++++ b/drivers/media/platform/qcom/iris/iris_probe.c
+@@ -281,9 +281,11 @@ static int iris_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_v4l2_unreg;
+ 
+-	ret = iris_register_video_device(core, ENCODER);
+-	if (ret)
+-		goto err_vdev_unreg_dec;
++	if (!core->iris_platform_data->no_encoder) {
++		ret = iris_register_video_device(core, ENCODER);
++		if (ret)
++			goto err_vdev_unreg_dec;
++	}
+ 
+ 	platform_set_drvdata(pdev, core);
+ 
+@@ -372,6 +374,10 @@ static const struct of_device_id iris_dt_match[] = {
+ 		.compatible = "qcom,sm8250-venus",
+ 		.data = &sm8250_data,
+ 	},
++	{
++		.compatible = "qcom,sm8450-iris",
++		.data = &sm8450_data,
++	},
+ 	{
+ 		.compatible = "qcom,sm8550-iris",
+ 		.data = &sm8550_data,
+diff --git a/drivers/mfd/qcom-pm8008.c b/drivers/mfd/qcom-pm8008.c
+index 60204cc9a..c9e5911e1 100644
+--- a/drivers/mfd/qcom-pm8008.c
++++ b/drivers/mfd/qcom-pm8008.c
+@@ -245,19 +245,25 @@ static int pm8008_probe(struct i2c_client *client)
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = devm_regmap_add_irq_chip_fwnode(dev, fwnode, regmap, client->irq,
+-				IRQF_SHARED, 0, &pm8008_irq_chip, &irq_data);
+-	if (ret) {
+-		dev_err(dev, "failed to add IRQ chip: %d\n", ret);
+-		return ret;
++	if (client->irq > 0) {
++		ret = devm_regmap_add_irq_chip_fwnode(dev, fwnode, regmap, client->irq,
++					IRQF_SHARED, 0, &pm8008_irq_chip, &irq_data);
++		if (ret) {
++			dev_err(dev, "failed to add IRQ chip: %d\n", ret);
++			return ret;
++		}
++
++		/* Needed by GPIO driver. */
++		dev_set_drvdata(dev, regmap_irq_get_domain(irq_data));
++
++		return devm_mfd_add_devices(dev, PLATFORM_DEVID_AUTO, pm8008_cells,
++					ARRAY_SIZE(pm8008_cells), NULL, 0,
++					regmap_irq_get_domain(irq_data));
+ 	}
+ 
+-	/* Needed by GPIO driver. */
+-	dev_set_drvdata(dev, regmap_irq_get_domain(irq_data));
+-
++	/* No IRQ wired on Xiaomi 12S Pro (unicorn): register LDO/regulator children directly */
+ 	return devm_mfd_add_devices(dev, PLATFORM_DEVID_AUTO, pm8008_cells,
+-				ARRAY_SIZE(pm8008_cells), NULL, 0,
+-				regmap_irq_get_domain(irq_data));
++				ARRAY_SIZE(pm8008_cells), NULL, 0, NULL);
+ }
+ 
+ static const struct of_device_id pm8008_match[] = {
+diff --git a/drivers/misc/fastrpc.c b/drivers/misc/fastrpc.c
+index d7a9e12f5..832c9b7b8 100644
+--- a/drivers/misc/fastrpc.c
++++ b/drivers/misc/fastrpc.c
+@@ -1278,7 +1278,15 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
+ 		if (!wait_for_completion_timeout(&ctx->work, 10 * HZ))
+ 			err = -ETIMEDOUT;
+ 	} else {
+-		err = wait_for_completion_interruptible(&ctx->work);
++		/*
++		 * Freezable: the freezer must not interrupt the wait. On
++		 * -ERESTARTSYS the context stays queued on the DSP and the
++		 * restarted ioctl sends a second one; the DSP then completes the
++		 * orphaned context and its reply (for a listener thread: the
++		 * DSP's next reverse-RPC request) is lost, once per suspend.
++		 */
++		err = wait_for_completion_state(&ctx->work,
++						TASK_INTERRUPTIBLE | TASK_FREEZABLE);
+ 	}
+ 
+ 	if (err)
+diff --git a/drivers/net/ipa/Makefile b/drivers/net/ipa/Makefile
+index e148ec3c1..d4995c2e8 100644
+--- a/drivers/net/ipa/Makefile
++++ b/drivers/net/ipa/Makefile
+@@ -7,7 +7,7 @@ IPA_REG_VERSIONS	:=	3.1 3.5.1 4.2 4.5 4.7 4.9 4.11 5.0 5.5
+ # Some IPA versions can reuse another set of GSI register definitions.
+ GSI_REG_VERSIONS	:=	3.1 3.5.1 4.0 4.5 4.9 4.11 5.0
+ 
+-IPA_DATA_VERSIONS	:=	3.1 3.5.1 4.2 4.5 4.7 4.9 4.11 5.0 5.2 5.5
++IPA_DATA_VERSIONS	:=	3.1 3.5.1 4.2 4.5 4.7 4.9 4.11 5.0 5.1 5.2 5.5
+ 
+ obj-$(CONFIG_QCOM_IPA)	+=	ipa.o
+ 
+diff --git a/drivers/net/ipa/gsi_reg.c b/drivers/net/ipa/gsi_reg.c
+index e13cf835a..a57072ba4 100644
+--- a/drivers/net/ipa/gsi_reg.c
++++ b/drivers/net/ipa/gsi_reg.c
+@@ -110,6 +110,7 @@ static const struct regs *gsi_regs(struct gsi *gsi)
+ 		return &gsi_regs_v4_11;
+ 
+ 	case IPA_VERSION_5_0:
++	case IPA_VERSION_5_1:
+ 	case IPA_VERSION_5_2:
+ 	case IPA_VERSION_5_5:
+ 		return &gsi_regs_v5_0;
+diff --git a/drivers/net/ipa/ipa_data.h b/drivers/net/ipa/ipa_data.h
+index 3eb9dc2ce..fe6f7d5bf 100644
+--- a/drivers/net/ipa/ipa_data.h
++++ b/drivers/net/ipa/ipa_data.h
+@@ -253,6 +253,7 @@ extern const struct ipa_data ipa_data_v4_7;
+ extern const struct ipa_data ipa_data_v4_9;
+ extern const struct ipa_data ipa_data_v4_11;
+ extern const struct ipa_data ipa_data_v5_0;
++extern const struct ipa_data ipa_data_v5_1;
+ extern const struct ipa_data ipa_data_v5_2;
+ extern const struct ipa_data ipa_data_v5_5;
+ 
+diff --git a/drivers/net/ipa/ipa_main.c b/drivers/net/ipa/ipa_main.c
+index 8d82fd5bb..3f2db9834 100644
+--- a/drivers/net/ipa/ipa_main.c
++++ b/drivers/net/ipa/ipa_main.c
+@@ -669,6 +669,10 @@ static const struct of_device_id ipa_match[] = {
+ 		.compatible	= "qcom,sdx65-ipa",
+ 		.data		= &ipa_data_v5_0,
+ 	},
++	{
++		.compatible	= "qcom,sm8450-ipa",
++		.data		= &ipa_data_v5_1,
++	},
+ 	{
+ 		.compatible	= "qcom,milos-ipa",
+ 		.data		= &ipa_data_v5_2,
+diff --git a/drivers/net/ipa/ipa_mem.c b/drivers/net/ipa/ipa_mem.c
+index 078d32a18..e8100f63c 100644
+--- a/drivers/net/ipa/ipa_mem.c
++++ b/drivers/net/ipa/ipa_mem.c
+@@ -158,6 +158,11 @@ static bool ipa_mem_id_valid(struct ipa *ipa, enum ipa_mem_id mem_id)
+ 			return false;
+ 		break;
+ 
++	case IPA_MEM_MODEM_STATS_DROP:
++		if (version < IPA_VERSION_5_0 || version > IPA_VERSION_5_1)
++			return false;
++		break;
++
+ 	case IPA_MEM_STATS_V4_FILTER:
+ 	case IPA_MEM_STATS_V6_FILTER:
+ 	case IPA_MEM_STATS_V4_ROUTE:
+diff --git a/drivers/net/ipa/ipa_mem.h b/drivers/net/ipa/ipa_mem.h
+index b25babade..3a8e9723c 100644
+--- a/drivers/net/ipa/ipa_mem.h
++++ b/drivers/net/ipa/ipa_mem.h
+@@ -68,6 +68,7 @@ enum ipa_mem_id {
+ 	IPA_MEM_STATS_QUOTA_AP,		/* 0 canaries, optional (IPA v4.0+) */
+ 	IPA_MEM_STATS_TETHERING,	/* 0 canaries, optional (IPA v4.0+) */
+ 	IPA_MEM_STATS_DROP,		/* 0 canaries, optional (IPA v4.0+) */
++	IPA_MEM_MODEM_STATS_DROP,	/* 0 canaries (IPA v5.0-v5.1) */
+ 	/* The next 7 filter and route statistics regions are optional */
+ 	IPA_MEM_STATS_V4_FILTER,	/* 0 canaries (IPA v4.0-v4.2) */
+ 	IPA_MEM_STATS_V6_FILTER,	/* 0 canaries (IPA v4.0-v4.2) */
+diff --git a/drivers/net/ipa/ipa_reg.c b/drivers/net/ipa/ipa_reg.c
+index 30bd69f4c..5f22ca629 100644
+--- a/drivers/net/ipa/ipa_reg.c
++++ b/drivers/net/ipa/ipa_reg.c
+@@ -125,6 +125,7 @@ static const struct regs *ipa_regs(enum ipa_version version)
+ 	case IPA_VERSION_4_11:
+ 		return &ipa_regs_v4_11;
+ 	case IPA_VERSION_5_0:
++	case IPA_VERSION_5_1:
+ 	case IPA_VERSION_5_2:
+ 		return &ipa_regs_v5_0;
+ 	case IPA_VERSION_5_5:
+diff --git a/drivers/net/wireless/ath/ath11k/pcic.c b/drivers/net/wireless/ath/ath11k/pcic.c
+index 2259adc3b..fab54a9f0 100644
+--- a/drivers/net/wireless/ath/ath11k/pcic.c
++++ b/drivers/net/wireless/ath/ath11k/pcic.c
+@@ -600,6 +600,11 @@ static int ath11k_pcic_ext_irq_config(struct ath11k_base *ab)
+ 
+ 		netif_napi_add(irq_grp->napi_ndev, &irq_grp->napi,
+ 			       ath11k_pcic_ext_grp_napi_poll);
++		/* The data path interrupts often all arrive on one CPU (one MSI
++		 * parent); threaded NAPI lets the scheduler run the rings on
++		 * other cores.
++		 */
++		netif_threaded_enable(irq_grp->napi_ndev);
+ 
+ 		if (ab->hw_params.ring_mask->tx[i] ||
+ 		    ab->hw_params.ring_mask->rx[i] ||
+diff --git a/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c b/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c
+index 3618812e8..16a616e01 100644
+--- a/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c
++++ b/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c
+@@ -3129,6 +3129,86 @@ static const struct qmp_phy_init_tbl sar2130p_qmp_gen3x2_pcie_rc_serdes_tbl[] =
+ 	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CORE_CLK_EN, 0xa0),
+ };
+ 
++/*
++ * SM8475 PCIe0: a V6 gen3x2 PHY (as on SAR2130P/SM8550) used with one lane,
++ * lane 1 held off through its PCS. Values from the vendor qcom,phy-sequence.
++ */
++static const struct qmp_phy_init_tbl sm8475_qmp_gen3x1_pcie_serdes_tbl[] = {
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_EN_CENTER, 0x01),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_PER1, 0x31),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_PER2, 0x01),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_STEP_SIZE1_MODE0, 0xff),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_STEP_SIZE2_MODE0, 0x06),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_STEP_SIZE1_MODE1, 0x4c),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SSC_STEP_SIZE2_MODE1, 0x06),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CLK_ENABLE1, 0x90),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SYS_CLK_CTRL, 0x82),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_PLL_IVCO, 0x07),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CP_CTRL_MODE0, 0x02),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CP_CTRL_MODE1, 0x02),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_PLL_RCTRL_MODE0, 0x16),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_PLL_RCTRL_MODE1, 0x16),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_PLL_CCTRL_MODE0, 0x36),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_PLL_CCTRL_MODE1, 0x36),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SYSCLK_EN_SEL, 0x08),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_BG_TIMER, 0x0e),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_LOCK_CMP_EN, 0x42),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_LOCK_CMP1_MODE0, 0x0a),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_LOCK_CMP2_MODE0, 0x1a),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_LOCK_CMP1_MODE1, 0x14),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_LOCK_CMP2_MODE1, 0x34),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DEC_START_MODE0, 0x82),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DEC_START_MODE1, 0x68),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DIV_FRAC_START1_MODE0, 0xab),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DIV_FRAC_START2_MODE0, 0xea),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DIV_FRAC_START3_MODE0, 0x02),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DIV_FRAC_START1_MODE1, 0xab),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DIV_FRAC_START2_MODE1, 0xaa),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_DIV_FRAC_START3_MODE1, 0x02),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_VCO_TUNE_MAP, 0x14),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CLK_SELECT, 0x34),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_HSCLK_SEL_1, 0x01),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CORECLK_DIV_MODE1, 0x04),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CMN_CONFIG_1, 0x16),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_ADDITIONAL_MISC_3, 0x0f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CORE_CLK_EN, 0xa0),
++};
++
++static const struct qmp_phy_init_tbl sm8475_qmp_gen3x1_pcie_rx_tbl[] = {
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_DFE_CTLE_POST_CAL_OFFSET, 0x38),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_GM_CAL, 0x11),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_00_HIGH, 0xbf),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_00_HIGH2, 0xbf),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_00_HIGH3, 0xb7),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_00_HIGH4, 0xea),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_00_LOW, 0x3f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_01_HIGH, 0x5c),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_01_HIGH2, 0x9c),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_01_HIGH3, 0x1a),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_01_HIGH4, 0x89),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_01_LOW, 0xdc),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_10_HIGH, 0x94),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_10_HIGH2, 0x5b),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_10_HIGH3, 0x1a),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_MODE_10_HIGH4, 0x89),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_TX_ADAPT_POST_THRESH, 0xf0),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_UCDR_FO_GAIN, 0x09),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_UCDR_SO_GAIN, 0x05),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_UCDR_SB2_THRESH1, 0x08),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_UCDR_SB2_THRESH2, 0x08),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_VGA_CAL_CNTRL2, 0x0f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_SIDGET_ENABLES, 0x1c),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_RX_IDAC_TSETTLE_LOW, 0x07),
++	QMP_PHY_INIT_CFG(QSERDES_V6_RX_SIGDET_CAL_TRIM, 0x08),
++};
++
++static const struct qmp_phy_init_tbl sm8475_qmp_gen3x1_pcie_pcs_misc_tbl[] = {
++	QMP_PHY_INIT_CFG(QPHY_PCIE_V6_PCS_PCIE_POWER_STATE_CONFIG2, 0x1d),
++	QMP_PHY_INIT_CFG(QPHY_PCIE_V6_PCS_PCIE_POWER_STATE_CONFIG4, 0x07),
++	QMP_PHY_INIT_CFG(QPHY_PCIE_V6_PCS_PCIE_ENDPOINT_REFCLK_DRIVE, 0xc1),
++	QMP_PHY_INIT_CFG(QPHY_PCIE_V6_PCS_PCIE_OSC_DTCT_ACTIONS, 0x00),
++};
++
+ static const struct qmp_phy_init_tbl sar2130p_qmp_gen3x2_pcie_pcs_lane1_tbl[] = {
+ 	QMP_PHY_INIT_CFG(QPHY_PCIE_V6_PCS_LANE1_INSIG_SW_CTRL2, 0x01),
+ 	QMP_PHY_INIT_CFG(QPHY_PCIE_V6_PCS_LANE1_INSIG_MX_CTRL2, 0x01),
+@@ -4406,6 +4486,35 @@ static const struct qmp_phy_cfg sm8450_qmp_gen4x2_pciephy_cfg = {
+ 	.aux_clock_rate		= 20000000,
+ };
+ 
++static const struct qmp_phy_cfg sm8475_qmp_gen3x1_pciephy_cfg = {
++	.lanes = 1,
++
++	.offsets		= &qmp_pcie_offsets_v5,
++
++	.tbls = {
++		.serdes		= sm8475_qmp_gen3x1_pcie_serdes_tbl,
++		.serdes_num	= ARRAY_SIZE(sm8475_qmp_gen3x1_pcie_serdes_tbl),
++		.tx		= sm8550_qmp_gen3x2_pcie_tx_tbl,
++		.tx_num		= ARRAY_SIZE(sm8550_qmp_gen3x2_pcie_tx_tbl),
++		.rx		= sm8475_qmp_gen3x1_pcie_rx_tbl,
++		.rx_num		= ARRAY_SIZE(sm8475_qmp_gen3x1_pcie_rx_tbl),
++		.pcs		= sm8550_qmp_gen3x2_pcie_pcs_tbl,
++		.pcs_num	= ARRAY_SIZE(sm8550_qmp_gen3x2_pcie_pcs_tbl),
++		.pcs_misc	= sm8475_qmp_gen3x1_pcie_pcs_misc_tbl,
++		.pcs_misc_num	= ARRAY_SIZE(sm8475_qmp_gen3x1_pcie_pcs_misc_tbl),
++		.pcs_lane1	= sar2130p_qmp_gen3x2_pcie_pcs_lane1_tbl,
++		.pcs_lane1_num	= ARRAY_SIZE(sar2130p_qmp_gen3x2_pcie_pcs_lane1_tbl),
++	},
++	.reset_list		= sdm845_pciephy_reset_l,
++	.num_resets		= ARRAY_SIZE(sdm845_pciephy_reset_l),
++	.vreg_list		= qmp_phy_vreg_l,
++	.num_vregs		= ARRAY_SIZE(qmp_phy_vreg_l),
++	.regs			= pciephy_v5_regs_layout,
++
++	.pwrdn_ctrl		= SW_PWRDN | REFCLK_DRV_DSBL,
++	.phy_status		= PHYSTATUS,
++};
++
+ static const struct qmp_phy_cfg sm8550_qmp_gen3x2_pciephy_cfg = {
+ 	.lanes = 2,
+ 
+@@ -5628,6 +5737,9 @@ static const struct of_device_id qmp_pcie_of_match_table[] = {
+ 	}, {
+ 		.compatible = "qcom,sm8450-qmp-gen3x1-pcie-phy",
+ 		.data = &sm8450_qmp_gen3x1_pciephy_cfg,
++	}, {
++		.compatible = "qcom,sm8475-qmp-gen3x1-pcie-phy",
++		.data = &sm8475_qmp_gen3x1_pciephy_cfg,
+ 	}, {
+ 		.compatible = "qcom,sm8450-qmp-gen4x2-pcie-phy",
+ 		.data = &sm8450_qmp_gen4x2_pciephy_cfg,
+diff --git a/drivers/power/supply/qcom_battmgr.c b/drivers/power/supply/qcom_battmgr.c
+index 91cf39b00..cbd5afd3c 100644
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -7,6 +7,7 @@
+ #include <linux/auxiliary_bus.h>
+ #include <linux/devm-helpers.h>
+ #include <linux/module.h>
++#include <linux/of.h>
+ #include <linux/mutex.h>
+ #include <linux/nvmem-consumer.h>
+ #include <linux/of_device.h>
+@@ -99,6 +100,9 @@ enum qcom_battmgr_variant {
+ #define WLS_BOOST_EN			6
+ 
+ #define BATTMGR_CHG_CTRL_LIMIT_EN	0x48
++
++/* Unsolicited vendor status broadcast of the Xiaomi charger firmware */
++#define BATTMGR_XIAOMI_STATUS		0x50
+ #define CHARGE_CTRL_START_THR_MIN	50
+ #define CHARGE_CTRL_START_THR_MAX	95
+ #define CHARGE_CTRL_END_THR_MIN		55
+@@ -275,6 +279,7 @@ struct qcom_battmgr_status {
+ 	unsigned int capacity;
+ 	unsigned int percent;
+ 	int current_now;
++	int constant_charge_current;
+ 	int power_now;
+ 	unsigned int voltage_now;
+ 	unsigned int voltage_ocv;
+@@ -313,6 +318,11 @@ struct qcom_battmgr {
+ 	struct pmic_glink_client *client;
+ 
+ 	enum qcom_battmgr_variant variant;
++	/*
++	 * Some firmware still has BATT_CONSTANT_CURRENT at index 12, which
++	 * moves every later battery property up by one.
++	 */
++	bool bat_prop_constant_current;
+ 
+ 	struct power_supply *ac_psy;
+ 	struct power_supply *bat_psy;
+@@ -361,9 +371,44 @@ static int qcom_battmgr_request(struct qcom_battmgr *battmgr, void *data, size_t
+ 	return battmgr->error;
+ }
+ 
++#define BATT_FW_CONSTANT_CURRENT	12
++
++static int qcom_battmgr_bat_prop_to_fw(struct qcom_battmgr *battmgr, int property)
++{
++	if (battmgr->bat_prop_constant_current &&
++	    property >= BATT_FW_CONSTANT_CURRENT)
++		return property + 1;
++	return property;
++}
++
++static int qcom_battmgr_bat_prop_from_fw(struct qcom_battmgr *battmgr, int property)
++{
++	if (battmgr->bat_prop_constant_current &&
++	    property > BATT_FW_CONSTANT_CURRENT)
++		return property - 1;
++	return property;
++}
++
++static int qcom_battmgr_request_property_raw(struct qcom_battmgr *battmgr, int opcode,
++					     int property, u32 value)
++{
++	struct qcom_battmgr_property_request request = {
++		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_BATTMGR),
++		.hdr.type = cpu_to_le32(PMIC_GLINK_REQ_RESP),
++		.hdr.opcode = cpu_to_le32(opcode),
++		.property = cpu_to_le32(property),
++		.value = cpu_to_le32(value),
++	};
++
++	return qcom_battmgr_request(battmgr, &request, sizeof(request));
++}
++
+ static int qcom_battmgr_request_property(struct qcom_battmgr *battmgr, int opcode,
+ 					 int property, u32 value)
+ {
++	if (opcode == BATTMGR_BAT_PROPERTY_GET || opcode == BATTMGR_BAT_PROPERTY_SET)
++		property = qcom_battmgr_bat_prop_to_fw(battmgr, property);
++
+ 	struct qcom_battmgr_property_request request = {
+ 		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_BATTMGR),
+ 		.hdr.type = cpu_to_le32(PMIC_GLINK_REQ_RESP),
+@@ -458,6 +503,15 @@ static int qcom_battmgr_bat_sm8350_update(struct qcom_battmgr *battmgr,
+ 	unsigned int prop;
+ 	int ret;
+ 
++	if (psp == POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT &&
++	    battmgr->bat_prop_constant_current) {
++		mutex_lock(&battmgr->lock);
++		ret = qcom_battmgr_request_property_raw(battmgr, BATTMGR_BAT_PROPERTY_GET,
++							BATT_FW_CONSTANT_CURRENT, 0);
++		mutex_unlock(&battmgr->lock);
++		return ret;
++	}
++
+ 	if (psp >= ARRAY_SIZE(sm8350_bat_prop_map))
+ 		return -EINVAL;
+ 
+@@ -562,6 +616,9 @@ static int qcom_battmgr_bat_get_property(struct power_supply *psy,
+ 	case POWER_SUPPLY_PROP_CURRENT_NOW:
+ 		val->intval = battmgr->status.current_now;
+ 		break;
++	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
++		val->intval = battmgr->status.constant_charge_current;
++		break;
+ 	case POWER_SUPPLY_PROP_POWER_NOW:
+ 		val->intval = battmgr->status.power_now;
+ 		break;
+@@ -763,6 +820,7 @@ static int qcom_battmgr_bat_is_writeable(struct power_supply *psy,
+ 	switch (psp) {
+ 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+ 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
++	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+ 		return 1;
+ 	default:
+ 		return 0;
+@@ -785,6 +843,16 @@ static int qcom_battmgr_bat_set_property(struct power_supply *psy,
+ 		return qcom_battmgr_set_charge_start_threshold(battmgr, pval->intval);
+ 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+ 		return qcom_battmgr_set_charge_end_threshold(battmgr, pval->intval);
++	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT: {
++		int ret;
++		mutex_lock(&battmgr->lock);
++		ret = qcom_battmgr_request_property_raw(battmgr, BATTMGR_BAT_PROPERTY_SET,
++							BATT_FW_CONSTANT_CURRENT, pval->intval);
++		mutex_unlock(&battmgr->lock);
++		if (!ret)
++			battmgr->status.constant_charge_current = pval->intval;
++		return ret;
++	}
+ 	default:
+ 		return -EINVAL;
+ 	}
+@@ -885,6 +953,7 @@ static const enum power_supply_property sm8350_bat_props[] = {
+ 	POWER_SUPPLY_PROP_INTERNAL_RESISTANCE,
+ 	POWER_SUPPLY_PROP_STATE_OF_HEALTH,
+ 	POWER_SUPPLY_PROP_POWER_NOW,
++	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT,
+ };
+ 
+ static const struct power_supply_desc sm8350_bat_psy_desc = {
+@@ -893,6 +962,8 @@ static const struct power_supply_desc sm8350_bat_psy_desc = {
+ 	.properties = sm8350_bat_props,
+ 	.num_properties = ARRAY_SIZE(sm8350_bat_props),
+ 	.get_property = qcom_battmgr_bat_get_property,
++	.set_property = qcom_battmgr_bat_set_property,
++	.property_is_writeable = qcom_battmgr_bat_is_writeable,
+ };
+ 
+ static const enum power_supply_property sm8550_bat_props[] = {
+@@ -1217,6 +1288,9 @@ static void qcom_battmgr_notification(struct qcom_battmgr *battmgr,
+ 	case NOTIF_WLS_PROPERTY:
+ 		power_supply_changed(battmgr->wls_psy);
+ 		break;
++	case BATTMGR_XIAOMI_STATUS:
++		/* Xiaomi vendor properties changed; none of them are exported */
++		break;
+ 	default:
+ 		dev_err(battmgr->dev, "unknown notification: %#x\n", notification);
+ 		break;
+@@ -1380,8 +1454,17 @@ static void qcom_battmgr_sm8350_callback(struct qcom_battmgr *battmgr,
+ 	}
+ 
+ 	switch (opcode) {
++	case BATTMGR_BAT_PROPERTY_SET:
++	case BATTMGR_USB_PROPERTY_SET:
++		break;
+ 	case BATTMGR_BAT_PROPERTY_GET:
+-		property = le32_to_cpu(resp->intval.property);
++		if (battmgr->bat_prop_constant_current &&
++		    le32_to_cpu(resp->intval.property) == BATT_FW_CONSTANT_CURRENT) {
++			battmgr->status.constant_charge_current = le32_to_cpu(resp->intval.value);
++			break;
++		}
++		property = qcom_battmgr_bat_prop_from_fw(battmgr,
++				le32_to_cpu(resp->intval.property));
+ 		if (property == BATT_MODEL_NAME) {
+ 			if (payload_len != sizeof(resp->strval)) {
+ 				dev_warn(battmgr->dev,
+@@ -1433,7 +1516,12 @@ static void qcom_battmgr_sm8350_callback(struct qcom_battmgr *battmgr,
+ 			battmgr->info.voltage_max = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		case BATT_CURR_NOW:
+-			battmgr->status.current_now = le32_to_cpu(resp->intval.value);
++			/*
++			 * The firmware reports charging current as negative,
++			 * the ABI wants it positive (upower takes a negative
++			 * current as discharging, whatever the status says).
++			 */
++			battmgr->status.current_now = -(int)le32_to_cpu(resp->intval.value);
+ 			break;
+ 		case BATT_TEMP:
+ 			val = le32_to_cpu(resp->intval.value);
+@@ -1575,6 +1663,14 @@ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ 	struct qcom_battmgr *battmgr = priv;
+ 	unsigned int opcode = le32_to_cpu(hdr->opcode);
+ 
++	/*
++	 * Xiaomi firmware broadcasts its own status block every few minutes.
++	 * It is not a reply to a request, so it must not complete the ack of
++	 * a request that is in flight.
++	 */
++	if (opcode == BATTMGR_XIAOMI_STATUS)
++		return;
++
+ 	if (opcode == BATTMGR_NOTIFICATION)
+ 		qcom_battmgr_notification(battmgr, data, len);
+ 	else if (battmgr->variant == QCOM_BATTMGR_SC8280XP ||
+@@ -1652,6 +1748,9 @@ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 	mutex_init(&battmgr->lock);
+ 	init_completion(&battmgr->ack);
+ 
++	/* Xiaomi 12T Pro ADSP firmware (BSP enum with BATT_CONSTANT_CURRENT) */
++	battmgr->bat_prop_constant_current = (of_machine_is_compatible("xiaomi,diting") || of_machine_is_compatible("xiaomi,unicorn"));
++
+ 	match = of_match_device(qcom_battmgr_of_variants, dev->parent);
+ 	if (match)
+ 		battmgr->variant = (unsigned long)match->data;
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index 2caadbbcf..996e082d5 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -209,6 +209,13 @@ config QCOM_SMP2P
+ 	  Say yes here to support the Qualcomm Shared Memory Point to Point
+ 	  protocol.
+ 
++config QCOM_SMP2P_SLEEPSTATE
++	tristate "Qualcomm smp2p sleep state notification"
++	depends on QCOM_SMP2P
++	help
++	  Say yes here to tell remote processors such as the sensor DSP
++	  through an smp2p entry whether the system is awake or suspended.
++
+ config QCOM_SMSM
+ 	tristate "Qualcomm Shared Memory State Machine"
+ 	depends on MAILBOX
+diff --git a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
+index b7f1d2a57..a5c67ebb8 100644
+--- a/drivers/soc/qcom/Makefile
++++ b/drivers/soc/qcom/Makefile
+@@ -27,6 +27,7 @@ obj-$(CONFIG_QCOM_SMEM) +=	smem.o
+ obj-$(CONFIG_QCOM_SMEM_STATE) += smem_state.o
+ CFLAGS_smp2p.o := -I$(src)
+ obj-$(CONFIG_QCOM_SMP2P)	+= smp2p.o
++obj-$(CONFIG_QCOM_SMP2P_SLEEPSTATE)	+= smp2p_sleepstate.o
+ obj-$(CONFIG_QCOM_SMSM)	+= smsm.o
+ obj-$(CONFIG_QCOM_SOCINFO)	+= socinfo.o
+ obj-$(CONFIG_QCOM_SPM)		+= spm.o
+diff --git a/drivers/soc/qcom/llcc-qcom.c b/drivers/soc/qcom/llcc-qcom.c
+index 8948b5fd4..3a0ea0122 100644
+--- a/drivers/soc/qcom/llcc-qcom.c
++++ b/drivers/soc/qcom/llcc-qcom.c
+@@ -5320,6 +5320,9 @@ static int qcom_llcc_cfg_program(struct platform_device *pdev,
+ 		}
+ 	} else {
+ 		for (i = 0; i < sz; i++) {
++			/* Preserve ABL continuous-splash display LLCC slice */
++			if (llcc_table[i].usecase_id == LLCC_DISP)
++				continue;
+ 			ret = _qcom_llcc_cfg_program(&llcc_table[i], cfg);
+ 			if (ret)
+ 				return ret;
+diff --git a/drivers/soc/qcom/qcom_pd_mapper.c b/drivers/soc/qcom/qcom_pd_mapper.c
+index 0dc1a7946..c455d7076 100644
+--- a/drivers/soc/qcom/qcom_pd_mapper.c
++++ b/drivers/soc/qcom/qcom_pd_mapper.c
+@@ -622,6 +622,7 @@ static const struct of_device_id qcom_pdm_domains[] __maybe_unused = {
+ 	{ .compatible = "qcom,sm8250", .data = sm8250_domains, },
+ 	{ .compatible = "qcom,sm8350", .data = sm8350_domains, },
+ 	{ .compatible = "qcom,sm8450", .data = sm8350_domains, },
++	{ .compatible = "qcom,sm8475", .data = sm8350_domains, },
+ 	{ .compatible = "qcom,sm8550", .data = sm8550_domains, },
+ 	{ .compatible = "qcom,sm8650", .data = sm8550_domains, },
+ 	{ .compatible = "qcom,sm8750", .data = sm8550_domains, },
+diff --git a/drivers/soc/qcom/ubwc_config.c b/drivers/soc/qcom/ubwc_config.c
+index 3fe47d8f0..c69ce8fe3 100644
+--- a/drivers/soc/qcom/ubwc_config.c
++++ b/drivers/soc/qcom/ubwc_config.c
+@@ -292,6 +292,7 @@ static const struct of_device_id qcom_ubwc_configs[] __maybe_unused = {
+ 	{ .compatible = "qcom,sm8250", .data = &sm8250_data, },
+ 	{ .compatible = "qcom,sm8350", .data = &sm8350_data, },
+ 	{ .compatible = "qcom,sm8450", .data = &sm8350_data, },
++	{ .compatible = "qcom,sm8475", .data = &sm8350_data, },
+ 	{ .compatible = "qcom,sm8550", .data = &sm8550_data, },
+ 	{ .compatible = "qcom,sm8650", .data = &sm8550_data, },
+ 	{ .compatible = "qcom,sm8750", .data = &sm8750_data, },
+diff --git a/drivers/thermal/qcom/qcom-spmi-temp-alarm.c b/drivers/thermal/qcom/qcom-spmi-temp-alarm.c
+index f39ca0ddd..faaa56b39 100644
+--- a/drivers/thermal/qcom/qcom-spmi-temp-alarm.c
++++ b/drivers/thermal/qcom/qcom-spmi-temp-alarm.c
+@@ -345,7 +345,7 @@ static int qpnp_tm_update_critical_trip_temp(struct qpnp_tm_chip *chip,
+ 	}
+ 
+ skip:
+-	memcpy(chip->temp_thresh_map, chip->data->temp_map[threshold],
++	memcpy(chip->temp_thresh_map, (*chip->data->temp_map)[threshold],
+ 		sizeof(chip->temp_thresh_map));
+ 	reg |= threshold;
+ 	if (disable_stage2_shutdown && !chip->require_stage2_shutdown)
+@@ -535,7 +535,7 @@ static int qpnp_tm_sync_thresholds(struct qpnp_tm_chip *chip)
+ 		return ret;
+ 
+ 	threshold = reg & SHUTDOWN_CTRL1_THRESHOLD_MASK;
+-	memcpy(chip->temp_thresh_map, chip->data->temp_map[threshold],
++	memcpy(chip->temp_thresh_map, (*chip->data->temp_map)[threshold],
+ 		sizeof(chip->temp_thresh_map));
+ 
+ 	return ret;
+diff --git a/include/dt-bindings/sound/qcom,q6dsp-lpass-ports.h b/include/dt-bindings/sound/qcom,q6dsp-lpass-ports.h
+index 45850f2d4..ba96de31f 100644
+--- a/include/dt-bindings/sound/qcom,q6dsp-lpass-ports.h
++++ b/include/dt-bindings/sound/qcom,q6dsp-lpass-ports.h
+@@ -243,5 +243,6 @@
+ #define LPASS_CLK_ATTRIBUTE_COUPLE_NO		0x1
+ #define LPASS_CLK_ATTRIBUTE_COUPLE_DIVIDEND	0x2
+ #define LPASS_CLK_ATTRIBUTE_COUPLE_DIVISOR	0x3
++#define LPASS_CLK_ATTRIBUTE_INVERT_COUPLE_NO	0x4
+ 
+ #endif /* __DT_BINDINGS_Q6_AUDIO_PORTS_H__ */
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index e6e9eb2e8..c44742760 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -21,10 +21,11 @@ struct apm_sub_graph_data {
+ 	struct apm_sg_prop_id_direction dir;
+ 	struct apm_prop_data sid_data;
+ 	struct apm_sg_prop_id_scenario_id sid;
+-
++	struct apm_prop_data vsid_data;
++	struct apm_sg_prop_id_vsid vsid;
+ } __packed;
+ 
+-#define APM_SUB_GRAPH_CFG_NPROP	3
++#define APM_SUB_GRAPH_CFG_NPROP	4
+ 
+ struct apm_sub_graph_params  {
+ 	struct apm_module_param_data param_data;
+@@ -358,6 +359,11 @@ static void apm_populate_sub_graph_config(struct apm_sub_graph_data *cfg,
+ 	cfg->sid_data.prop_id = APM_SUB_GRAPH_PROP_ID_SCENARIO_ID;
+ 	cfg->sid_data.prop_size = APM_SG_PROP_ID_SID_SIZE;
+ 	cfg->sid.scenario_id = sg->scenario_id;
++
++	/* Voice session */
++	cfg->vsid_data.prop_id = APM_SUB_GRAPH_PROP_ID_VSID;
++	cfg->vsid_data.prop_size = APM_SG_PROP_ID_VSID_SIZE;
++	cfg->vsid.vsid = APM_SUB_GRAPH_VSID_DONT_CARE;
+ }
+ 
+ static void apm_populate_module_prop_obj(struct apm_mod_prop_obj *obj,
+@@ -485,6 +491,7 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 	int num_sub_graphs = 0;
+ 	int num_modules = 0;
+ 	int num_modules_list;
++	size_t open_sz = 0;
+ 	struct gpr_pkt *pkt;
+ 	void *p;
+ 
+@@ -505,6 +512,7 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 
+ 			list_for_each_entry(module, &container->modules_list, node) {
+ 				num_connections += module->num_connections;
++				open_sz += module->cfg_size[AR_MODULE_CFG_GRAPH_OPEN];
+ 			}
+ 		}
+ 	}
+@@ -518,7 +526,9 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 	mp_sz = APM_MOD_PROP_PSIZE(mprop, num_modules);
+ 	mc_sz =	APM_MOD_CONN_PSIZE(mcon, num_connections);
+ 
+-	payload_size = sg_sz + cont_sz + ml_sz + mp_sz + mc_sz;
++	payload_size = sg_sz + cont_sz + ml_sz + mp_sz + mc_sz + open_sz;
++	dev_dbg(apm->dev, "graph %d open: %d sub-graphs, %d modules, %d connections, %zu B extra\n",
++		info->id, num_sub_graphs, num_modules, num_connections, open_sz);
+ 	pkt = audioreach_alloc_apm_cmd_pkt(payload_size, APM_CMD_GRAPH_OPEN, 0);
+ 	if (IS_ERR(pkt))
+ 		return pkt;
+@@ -572,6 +582,18 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 
+ 	audioreach_populate_graph(apm, info, &params, sg_list, num_sub_graphs);
+ 
++	/* extra graph open parameters from the topology, e.g. control links */
++	list_for_each_entry(sgs, sg_list, node) {
++		list_for_each_entry(container, &sgs->container_list, node) {
++			list_for_each_entry(module, &container->modules_list, node) {
++				size_t sz = module->cfg_size[AR_MODULE_CFG_GRAPH_OPEN];
++
++				memcpy(p, module->cfg[AR_MODULE_CFG_GRAPH_OPEN], sz);
++				p += sz;
++			}
++		}
++	}
++
+ 	return pkt;
+ }
+ EXPORT_SYMBOL_GPL(audioreach_alloc_graph_pkt);
+@@ -813,23 +835,54 @@ static int audioreach_gapless_set_media_format(struct q6apm_graph *graph,
+ 					 EARLY_EOS_DELAY_MS);
+ }
+ 
+-static int audioreach_set_module_config(struct q6apm_graph *graph,
+-					const struct audioreach_module *module,
+-					const struct audioreach_module_config *cfg)
++static int __audioreach_set_module_config(struct q6apm_graph *graph,
++					  const struct audioreach_module *module, int kind)
+ {
+-	int size = le32_to_cpu(module->data->size);
+-	void *p;
+-
+-	struct gpr_pkt *pkt __free(kfree) = audioreach_alloc_apm_cmd_pkt(size, APM_CMD_SET_CFG, 0);
+-	if (IS_ERR(pkt))
+-		return PTR_ERR(pkt);
++	size_t size = module->cfg_size[kind], off, len;
++	int ret;
++
++	/*
++	 * One command per parameter: a parameter the DSP rejects is reported
++	 * and skipped, like a vendor calibration set that is applied as a whole.
++	 */
++	for (off = 0; off + APM_MODULE_PARAM_DATA_SIZE <= size; off += len) {
++		const struct apm_module_param_data *pd = module->cfg[kind] + off;
++
++		len = APM_MODULE_PARAM_DATA_SIZE + ALIGN(pd->param_size, 8);
++		if (len > size - off)
++			return -EINVAL;
++
++		struct gpr_pkt *pkt __free(kfree) =
++			audioreach_alloc_apm_cmd_pkt(len, APM_CMD_SET_CFG, 0);
++		if (IS_ERR(pkt))
++			return PTR_ERR(pkt);
++
++		memcpy((void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE, pd, len);
++		ret = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++		if (ret == -EINVAL)
++			dev_warn(graph->dev, "set config iid 0x%x pid 0x%x rejected\n",
++				 pd->module_instance_id, pd->param_id);
++		else if (ret)
++			return ret;
++	}
+ 
+-	p = (void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE;
++	return 0;
++}
+ 
+-	memcpy(p, module->data->data, size);
++int audioreach_set_module_config(struct q6apm_graph *graph,
++				 const struct audioreach_module *module,
++				 const struct audioreach_module_config *cfg)
++{
++	return __audioreach_set_module_config(graph, module, AR_MODULE_CFG_SET);
++}
++EXPORT_SYMBOL_GPL(audioreach_set_module_config);
+ 
+-	return q6apm_send_cmd_sync(graph->apm, pkt, 0);
++int audioreach_set_module_config_late(struct q6apm_graph *graph,
++				      const struct audioreach_module *module)
++{
++	return __audioreach_set_module_config(graph, module, AR_MODULE_CFG_SET_LATE);
+ }
++EXPORT_SYMBOL_GPL(audioreach_set_module_config_late);
+ 
+ static int audioreach_mfc_set_media_format(struct q6apm_graph *graph,
+ 					   const struct audioreach_module *module,
+@@ -1370,9 +1423,6 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 	case MODULE_ID_DISPLAY_PORT_SINK:
+ 		rc = audioreach_display_port_set_media_format(graph, module, cfg);
+ 		break;
+-	case  MODULE_ID_SMECNS_V2:
+-		rc = audioreach_set_module_config(graph, module, cfg);
+-		break;
+ 	case MODULE_ID_I2S_SOURCE:
+ 	case MODULE_ID_I2S_SINK:
+ 		rc = audioreach_i2s_set_media_format(graph, module, cfg);
+@@ -1416,6 +1466,10 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		rc = 0;
+ 	}
+ 
++	/* topology supplied configuration last, so it can override defaults */
++	if (!rc)
++		rc = audioreach_set_module_config(graph, module, cfg);
++
+ 	return rc;
+ }
+ EXPORT_SYMBOL_GPL(audioreach_set_media_format);
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 62a2fd79b..9f72f380d 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -8,6 +8,7 @@
+ #include <sound/soc.h>
+ struct q6apm;
+ struct q6apm_graph;
++struct audioreach_module_config;
+ 
+ /* Module IDs */
+ #define MODULE_ID_WR_SHARED_MEM_EP	0x07001000
+@@ -59,6 +60,7 @@ struct q6apm_graph;
+ #define APM_CMD_GRAPH_CLOSE			0x01001004
+ #define APM_CMD_GRAPH_FLUSH			0x01001005
+ #define APM_CMD_SET_CFG				0x01001006
++#define APM_CMD_REGISTER_CFG			0x01001008
+ #define APM_CMD_GET_CFG				0x01001007
+ #define APM_CMD_SHARED_MEM_MAP_REGIONS		0x0100100C
+ #define APM_CMD_SHARED_MEM_UNMAP_REGIONS	0x0100100D
+@@ -68,6 +70,8 @@ struct q6apm_graph;
+ #define APM_MMAP_TOKEN_GID_MASK			GENMASK(15, 0)
+ #define APM_MMAP_TOKEN_MAP_TYPE_POS_BUF		BIT(16)
+ #define APM_MMAP_TOKEN_MAP_TYPE_SHIFT		16
++#define APM_MMAP_TOKEN_MAP_TYPE_CAL		BIT(17)
++#define APM_MMAP_TOKEN_OOB			0x4f4f4200
+ #define APM_CMD_RSP_GET_CFG			0x02001000
+ #define APM_CMD_CLOSE_ALL			0x01001013
+ #define APM_CMD_REGISTER_SHARED_CFG		0x0100100A
+@@ -474,6 +478,20 @@ struct apm_sg_prop_id_scenario_id {
+ } __packed;
+ 
+ #define APM_SG_PROP_ID_SID_SIZE			4
++
++/*
++ * Voice session of a sub-graph. VCPM finds the sub-graphs of a voice call
++ * through it; "don't care" sub-graphs join the session that the client
++ * names with VCPM_PARAM_ID_VSID. The DSP default without the property is 0.
++ */
++#define APM_SUB_GRAPH_PROP_ID_VSID		0x080010CC
++#define APM_SUB_GRAPH_VSID_DONT_CARE		0xFFFFFFFF
++
++struct apm_sg_prop_id_vsid {
++	uint32_t vsid;
++} __packed;
++
++#define APM_SG_PROP_ID_VSID_SIZE		4
+ /* container api */
+ #define APM_PARAM_ID_CONTAINER_CONFIG		0x08001000
+ 
+@@ -813,6 +831,12 @@ struct audioreach_graph_info {
+ 	int id;
+ 	uint32_t mem_map_handle;
+ 	uint32_t pos_buf_mem_map_handle;
++	/* persistent module configuration (calibration) in shared memory */
++	uint32_t cal_mem_map_handle;
++	void *cal_buf;
++	dma_addr_t cal_phys;
++	size_t cal_size;
++	struct device *cal_dev;
+ 	uint32_t num_sub_graphs;
+ 	struct list_head sg_list;
+ 	bool is_push_pull_mode;
+@@ -892,9 +916,35 @@ struct audioreach_module {
+ 	struct list_head node;
+ 	struct audioreach_container *container;
+ 	struct snd_soc_dapm_widget *widget;
+-	struct audioreach_module_priv_data *data;
++
++	/*
++	 * Configuration from the topology (SND_SOC_AR_TPLG_MODULE_CFG_TYPE
++	 * arrays), each a list of APM module parameters, by AR_MODULE_CFG_*:
++	 * sent with APM_CMD_SET_CFG when the media format is set, registered
++	 * as persistent configuration through shared memory, or added to the
++	 * graph open command (e.g. control links).
++	 */
++	void *cfg[5];
++	size_t cfg_size[5];
+ };
+ 
++int audioreach_set_module_config(struct q6apm_graph *graph,
++				 const struct audioreach_module *module,
++				 const struct audioreach_module_config *cfg);
++int audioreach_set_module_config_late(struct q6apm_graph *graph,
++				      const struct audioreach_module *module);
++
++/*
++ * order of use: GRAPH_OPEN, SET, PERSISTENT, SET_LATE; PLAYBACK_LINKS is a
++ * graph open command with links to the playback device graph, sent when a
++ * hostless graph is prepared for playback (that device graph exists then)
++ */
++#define AR_MODULE_CFG_SET		0
++#define AR_MODULE_CFG_PERSISTENT	1
++#define AR_MODULE_CFG_GRAPH_OPEN	2
++#define AR_MODULE_CFG_SET_LATE		3
++#define AR_MODULE_CFG_PLAYBACK_LINKS	4
++
+ struct audioreach_module_config {
+ 	int	direction;
+ 	u32	sample_rate;
+diff --git a/sound/soc/qcom/qdsp6/q6apm-dai.c b/sound/soc/qcom/qdsp6/q6apm-dai.c
+index bf1f872a0..fc049b8de 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6apm-dai.c
+@@ -244,6 +244,21 @@ static int q6apm_dai_prepare(struct snd_soc_component *component,
+ 
+ 	prtd->last_pos_index = 0;
+ 	prtd->pcm_count = snd_pcm_lib_period_bytes(substream);
++
++	if (q6apm_graph_is_hostless(prtd->graph)) {
++		ret = q6apm_graph_hostless_config(prtd->graph, substream->stream);
++		if (!ret)
++			ret = q6apm_graph_prepare(prtd->graph);
++		if (!ret)
++			ret = q6apm_graph_start(prtd->graph);
++		if (ret) {
++			dev_err(dev, "Failed to start hostless graph %d\n", ret);
++			return ret;
++		}
++		prtd->state = Q6APM_STREAM_RUNNING;
++		return 0;
++	}
++
+ 	if (q6apm_is_graph_in_push_pull_mode(prtd->graph)) {
+ 		if (prtd->pcm_size != prtd->push_pull_size) {
+ 			ret = q6apm_push_pull_config(prtd->graph, prtd->phys, prtd->pos_phys,
+diff --git a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+index 006b28348..bb8cc289b 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
++++ b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+@@ -313,6 +313,8 @@ static int q6apm_lpass_dai_dev_probe(struct platform_device *pdev)
+ 
+ 	memset(&cfg, 0, sizeof(cfg));
+ 	cfg.q6i2s_ops = &q6i2s_ops;
++	/* the TDM framing comes with the endpoint module's topology config */
++	cfg.q6tdm_ops = &q6i2s_ops;
+ 	cfg.q6dma_ops = &q6dma_ops;
+ 	cfg.q6hdmi_ops = &q6hdmi_ops;
+ 	dais = q6dsp_audio_ports_set_config(dev, &cfg, &num_dais);
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index f167b9dae..2dd97526c 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -15,6 +15,9 @@
+ #include <sound/soc.h>
+ #include <sound/soc-dapm.h>
+ #include <sound/pcm.h>
++#include <linux/debugfs.h>
++#include <linux/dma-mapping.h>
++#include <linux/of_platform.h>
+ #include "audioreach.h"
+ #include "q6apm.h"
+ 
+@@ -29,6 +32,8 @@ struct apm_graph_mgmt_cmd {
+ 
+ static struct q6apm *g_apm;
+ 
++static int q6apm_send_graph_open(struct q6apm *apm, struct gpr_pkt *pkt);
++
+ int q6apm_send_cmd_sync(struct q6apm *apm, const struct gpr_pkt *pkt,
+ 			uint32_t rsp_opcode)
+ {
+@@ -42,7 +47,7 @@ static struct audioreach_graph *q6apm_get_audioreach_graph(struct q6apm *apm, ui
+ {
+ 	struct audioreach_graph_info *info;
+ 	struct audioreach_graph *graph;
+-	int id;
++	int id, ret;
+ 
+ 	mutex_lock(&apm->lock);
+ 	graph = idr_find(&apm->graph_idr, graph_id);
+@@ -87,7 +92,16 @@ static struct audioreach_graph *q6apm_get_audioreach_graph(struct q6apm *apm, ui
+ 
+ 	kref_init(&graph->refcount);
+ 
+-	q6apm_send_cmd_sync(apm, graph->graph, 0);
++	ret = q6apm_send_graph_open(apm, graph->graph);
++	if (ret) {
++		dev_err(apm->dev, "Failed to open graph %d: %d\n", graph_id, ret);
++		mutex_lock(&apm->lock);
++		idr_remove(&apm->graph_idr, graph_id);
++		mutex_unlock(&apm->lock);
++		kfree(graph->graph);
++		kfree(graph);
++		return ERR_PTR(ret);
++	}
+ 
+ 	return graph;
+ }
+@@ -121,6 +135,101 @@ static int audioreach_graph_mgmt_cmd(struct audioreach_graph *graph, uint32_t op
+ 	return q6apm_send_cmd_sync(apm, pkt, 0);
+ }
+ 
++static void q6apm_graph_release_cal(struct q6apm *apm, struct audioreach_graph_info *info);
++
++/* in-band GPR packets are limited to about 4 KiB */
++#define Q6APM_INBAND_MAX	3584
++
++/*
++ * Send an APM command whose payload is too large for an in-band packet
++ * through a temporary shared buffer, as the vendor graph services do.
++ */
++static int q6apm_send_cmd_oob(struct q6apm *apm, uint32_t opcode,
++			      const void *payload, size_t size)
++{
++	struct apm_shared_map_region_payload *mregions;
++	struct apm_cmd_shared_mem_unmap_regions *ucmd;
++	struct apm_cmd_shared_mem_map_regions *cmd;
++	size_t buf_size = ALIGN(size, SZ_4K);
++	struct apm_cmd_header *hdr;
++	dma_addr_t phys;
++	void *buf;
++	u64 addr;
++	int ret;
++
++	if (!apm->dais_dev)
++		return -ENODEV;
++
++	buf = dma_alloc_coherent(apm->dais_dev, buf_size, &phys, GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++	memcpy(buf, payload, size);
++	addr = phys | apm->dais_sid;
++
++	struct gpr_pkt *map __free(kfree) =
++		audioreach_alloc_apm_pkt(sizeof(*cmd) + sizeof(*mregions),
++					 APM_CMD_SHARED_MEM_MAP_REGIONS, APM_MMAP_TOKEN_OOB,
++					 GPR_APM_MODULE_IID);
++	if (IS_ERR(map)) {
++		ret = PTR_ERR(map);
++		goto free;
++	}
++	cmd = (void *)map + GPR_HDR_SIZE;
++	cmd->mem_pool_id = APM_MEMORY_MAP_SHMEM8_4K_POOL;
++	cmd->num_regions = 1;
++	cmd->property_flag = 0;
++	mregions = (void *)cmd + sizeof(*cmd);
++	mregions->shm_addr_lsw = lower_32_bits(addr);
++	mregions->shm_addr_msw = upper_32_bits(addr);
++	mregions->mem_size_bytes = buf_size;
++
++	apm->oob_handle = 0;
++	ret = q6apm_send_cmd_sync(apm, map, APM_CMD_RSP_SHARED_MEM_MAP_REGIONS);
++	if (ret)
++		goto free;
++
++	struct gpr_pkt *pkt __free(kfree) =
++		audioreach_alloc_apm_pkt(sizeof(*hdr), opcode, 0, GPR_APM_MODULE_IID);
++	if (IS_ERR(pkt)) {
++		ret = PTR_ERR(pkt);
++		goto unmap;
++	}
++	hdr = (void *)pkt + GPR_HDR_SIZE;
++	hdr->payload_address_lsw = lower_32_bits(addr);
++	hdr->payload_address_msw = upper_32_bits(addr);
++	hdr->mem_map_handle = apm->oob_handle;
++	hdr->payload_size = size;
++	ret = q6apm_send_cmd_sync(apm, pkt, 0);
++
++unmap:
++	{
++		struct gpr_pkt *unmap __free(kfree) =
++			audioreach_alloc_apm_pkt(sizeof(*ucmd), APM_CMD_SHARED_MEM_UNMAP_REGIONS,
++						 APM_MMAP_TOKEN_OOB, GPR_APM_MODULE_IID);
++		if (!IS_ERR(unmap)) {
++			ucmd = (void *)unmap + GPR_HDR_SIZE;
++			ucmd->mem_map_handle = apm->oob_handle;
++			q6apm_send_cmd_sync(apm, unmap, APM_CMD_SHARED_MEM_UNMAP_REGIONS);
++		}
++	}
++free:
++	dma_free_coherent(apm->dais_dev, buf_size, buf, phys);
++
++	return ret;
++}
++
++/* graph open, out of band when the graph is large */
++static int q6apm_send_graph_open(struct q6apm *apm, struct gpr_pkt *pkt)
++{
++	struct apm_cmd_header *hdr = (void *)pkt + GPR_HDR_SIZE;
++
++	if (hdr->payload_size <= Q6APM_INBAND_MAX)
++		return q6apm_send_cmd_sync(apm, pkt, 0);
++
++	return q6apm_send_cmd_oob(apm, APM_CMD_GRAPH_OPEN, (void *)hdr + APM_CMD_HDR_SIZE,
++				  hdr->payload_size);
++}
++
+ static void q6apm_put_audioreach_graph(struct kref *ref)
+ {
+ 	struct audioreach_graph *graph;
+@@ -130,6 +239,7 @@ static void q6apm_put_audioreach_graph(struct kref *ref)
+ 	apm = graph->apm;
+ 
+ 	audioreach_graph_mgmt_cmd(graph, APM_CMD_GRAPH_CLOSE);
++	q6apm_graph_release_cal(apm, graph->info);
+ 
+ 	mutex_lock(&apm->lock);
+ 	graph = idr_remove(&apm->graph_idr, graph->id);
+@@ -440,6 +550,229 @@ int q6apm_set_real_module_id(struct device *dev, struct q6apm_graph *graph,
+ }
+ EXPORT_SYMBOL_GPL(q6apm_set_real_module_id);
+ 
++/*
++ * Persistent module configuration (e.g. VCPM calibration tables) is too
++ * large for an in-band command: copy it into one shared buffer per graph
++ * and register it with the DSP, which keeps referring to it while the
++ * graph is open.
++ */
++static int q6apm_graph_register_cal(struct q6apm_graph *graph)
++{
++	struct audioreach_graph_info *info = graph->info;
++	struct apm_shared_map_region_payload *mregions;
++	struct apm_cmd_shared_mem_map_regions *cmd;
++	struct audioreach_container *container;
++	struct audioreach_module *module;
++	struct audioreach_sub_graph *sgs;
++	struct q6apm *apm = graph->apm;
++	struct apm_cmd_header *hdr;
++	size_t size = 0, off = 0;
++	int ret;
++
++	if (info->cal_buf)
++		return 0;
++
++	list_for_each_entry(sgs, &info->sg_list, node)
++		list_for_each_entry(container, &sgs->container_list, node)
++			list_for_each_entry(module, &container->modules_list, node)
++				size += module->cfg_size[AR_MODULE_CFG_PERSISTENT];
++	if (!size)
++		return 0;
++	if (!apm->dais_dev)
++		return -ENODEV;
++
++	dev_dbg(apm->dev, "graph %d: %zu B persistent configuration\n", info->id, size);
++	info->cal_size = ALIGN(size, SZ_4K);
++	info->cal_dev = apm->dais_dev;
++	info->cal_buf = dma_alloc_coherent(info->cal_dev, info->cal_size,
++					   &info->cal_phys, GFP_KERNEL);
++	if (!info->cal_buf)
++		return -ENOMEM;
++
++	list_for_each_entry(sgs, &info->sg_list, node) {
++		list_for_each_entry(container, &sgs->container_list, node) {
++			list_for_each_entry(module, &container->modules_list, node) {
++				memcpy(info->cal_buf + off, module->cfg[AR_MODULE_CFG_PERSISTENT],
++				       module->cfg_size[AR_MODULE_CFG_PERSISTENT]);
++				off += module->cfg_size[AR_MODULE_CFG_PERSISTENT];
++			}
++		}
++	}
++
++	struct gpr_pkt *map __free(kfree) =
++		audioreach_alloc_apm_pkt(sizeof(*cmd) + sizeof(*mregions),
++					 APM_CMD_SHARED_MEM_MAP_REGIONS,
++					 info->id | APM_MMAP_TOKEN_MAP_TYPE_CAL,
++					 GPR_APM_MODULE_IID);
++	if (IS_ERR(map))
++		return PTR_ERR(map);
++
++	cmd = (void *)map + GPR_HDR_SIZE;
++	cmd->mem_pool_id = APM_MEMORY_MAP_SHMEM8_4K_POOL;
++	cmd->num_regions = 1;
++	cmd->property_flag = 0;
++	mregions = (void *)cmd + sizeof(*cmd);
++	mregions->shm_addr_lsw = lower_32_bits(info->cal_phys | apm->dais_sid);
++	mregions->shm_addr_msw = upper_32_bits(info->cal_phys | apm->dais_sid);
++	mregions->mem_size_bytes = info->cal_size;
++
++	ret = q6apm_send_cmd_sync(apm, map, APM_CMD_RSP_SHARED_MEM_MAP_REGIONS);
++	if (ret)
++		return ret;
++
++	struct gpr_pkt *reg __free(kfree) =
++		audioreach_alloc_apm_pkt(sizeof(*hdr), APM_CMD_REGISTER_CFG, info->id,
++					 GPR_APM_MODULE_IID);
++	if (IS_ERR(reg))
++		return PTR_ERR(reg);
++
++	/* one command per parameter, as the vendor graph services do */
++	for (off = 0; off + APM_MODULE_PARAM_DATA_SIZE <= size; ) {
++		struct apm_module_param_data *pd = info->cal_buf + off;
++		size_t len = APM_MODULE_PARAM_DATA_SIZE + ALIGN(pd->param_size, 8);
++		u64 addr = (info->cal_phys + off) | apm->dais_sid;
++
++		hdr = (void *)reg + GPR_HDR_SIZE;
++		hdr->payload_address_lsw = lower_32_bits(addr);
++		hdr->payload_address_msw = upper_32_bits(addr);
++		hdr->mem_map_handle = info->cal_mem_map_handle;
++		hdr->payload_size = len;
++
++		ret = q6apm_send_cmd_sync(apm, reg, 0);
++		if (ret) {
++			dev_err(apm->dev, "persistent config iid 0x%x pid 0x%x (%zu bytes): %d\n",
++				pd->module_instance_id, pd->param_id, len, ret);
++			return ret;
++		}
++		off += len;
++	}
++
++	return 0;
++}
++
++static void q6apm_graph_release_cal(struct q6apm *apm, struct audioreach_graph_info *info)
++{
++	struct apm_cmd_shared_mem_unmap_regions *cmd;
++
++	if (!info->cal_buf)
++		return;
++
++	if (info->cal_mem_map_handle) {
++		struct gpr_pkt *pkt __free(kfree) =
++			audioreach_alloc_apm_pkt(sizeof(*cmd), APM_CMD_SHARED_MEM_UNMAP_REGIONS,
++						 info->id | APM_MMAP_TOKEN_MAP_TYPE_CAL,
++						 GPR_APM_MODULE_IID);
++		if (!IS_ERR(pkt)) {
++			cmd = (void *)pkt + GPR_HDR_SIZE;
++			cmd->mem_map_handle = info->cal_mem_map_handle;
++			q6apm_send_cmd_sync(apm, pkt, APM_CMD_SHARED_MEM_UNMAP_REGIONS);
++		}
++	}
++	dma_free_coherent(info->cal_dev, info->cal_size, info->cal_buf, info->cal_phys);
++	info->cal_buf = NULL;
++	info->cal_mem_map_handle = 0;
++}
++
++/*
++ * A graph without a shared memory endpoint exchanges no data with the
++ * host, e.g. a voice call between the modem and the codecs. Its modules
++ * get only the configuration from the topology: the media formats are
++ * negotiated inside the DSP (VCPM for voice).
++ */
++bool q6apm_graph_is_hostless(struct q6apm_graph *graph)
++{
++	return !graph->shm_iid;
++}
++EXPORT_SYMBOL_GPL(q6apm_graph_is_hostless);
++
++/*
++ * Links from a hostless graph to the playback device graph, one graph open
++ * command per parameter; a link the device modules do not support is
++ * reported and skipped.
++ */
++static int q6apm_graph_open_playback_links(struct q6apm_graph *graph)
++{
++	struct audioreach_graph_info *info = graph->info;
++	struct audioreach_container *container;
++	struct audioreach_module *module;
++	struct audioreach_sub_graph *sgs;
++	size_t size, off, len;
++	int ret;
++
++	list_for_each_entry(sgs, &info->sg_list, node) {
++		list_for_each_entry(container, &sgs->container_list, node) {
++			list_for_each_entry(module, &container->modules_list, node) {
++				size = module->cfg_size[AR_MODULE_CFG_PLAYBACK_LINKS];
++				for (off = 0; off + APM_MODULE_PARAM_DATA_SIZE <= size; off += len) {
++					const struct apm_module_param_data *pd =
++						module->cfg[AR_MODULE_CFG_PLAYBACK_LINKS] + off;
++
++					len = APM_MODULE_PARAM_DATA_SIZE + ALIGN(pd->param_size, 8);
++					if (len > size - off)
++						return -EINVAL;
++
++					struct gpr_pkt *pkt __free(kfree) =
++						audioreach_alloc_apm_cmd_pkt(len, APM_CMD_GRAPH_OPEN, 0);
++					if (IS_ERR(pkt))
++						return PTR_ERR(pkt);
++					memcpy((void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE, pd, len);
++					ret = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++					if (ret == -EINVAL)
++						dev_warn(graph->dev, "playback link %zu of 0x%x rejected\n",
++							 off, module->instance_id);
++					else if (ret)
++						return ret;
++				}
++			}
++		}
++	}
++
++	return 0;
++}
++
++int q6apm_graph_hostless_config(struct q6apm_graph *graph, int dir)
++{
++	struct audioreach_graph_info *info = graph->info;
++	struct audioreach_container *container;
++	struct audioreach_module *module;
++	struct audioreach_sub_graph *sgs;
++	int ret;
++
++	list_for_each_entry(sgs, &info->sg_list, node) {
++		list_for_each_entry(container, &sgs->container_list, node) {
++			list_for_each_entry(module, &container->modules_list, node) {
++				ret = audioreach_set_module_config(graph, module, NULL);
++				if (ret)
++					return ret;
++			}
++		}
++	}
++
++	if (dir == SNDRV_PCM_STREAM_PLAYBACK) {
++		ret = q6apm_graph_open_playback_links(graph);
++		if (ret)
++			return ret;
++	}
++
++	/* e.g. VCPM: the session (VSID) first, then its calibration tables */
++	ret = q6apm_graph_register_cal(graph);
++	if (ret)
++		return ret;
++
++	list_for_each_entry(sgs, &info->sg_list, node) {
++		list_for_each_entry(container, &sgs->container_list, node) {
++			list_for_each_entry(module, &container->modules_list, node) {
++				ret = audioreach_set_module_config_late(graph, module);
++				if (ret)
++					return ret;
++			}
++		}
++	}
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(q6apm_graph_hostless_config);
++
+ int q6apm_graph_media_format_pcm(struct q6apm_graph *graph, struct audioreach_module_config *cfg)
+ {
+ 	struct audioreach_graph_info *info = graph->info;
+@@ -448,6 +781,10 @@ int q6apm_graph_media_format_pcm(struct q6apm_graph *graph, struct audioreach_mo
+ 	struct audioreach_module *module;
+ 	int ret;
+ 
++	ret = q6apm_graph_register_cal(graph);
++	if (ret)
++		return ret;
++
+ 	list_for_each_entry(sgs, &info->sg_list, node) {
+ 		list_for_each_entry(container, &sgs->container_list, node) {
+ 			list_for_each_entry(module, &container->modules_list, node) {
+@@ -856,9 +1193,195 @@ static const struct snd_soc_component_driver q6apm_audio_component = {
+ 	.remove_order   = SND_SOC_COMP_ORDER_LAST,
+ };
+ 
++/*
++ * Bring-up only: send raw APM commands from userspace, to experiment with
++ * graphs the topology cannot describe yet (voice calls). Not for production.
++ *
++ * write: u32 opcode, then the command payload after the GPR header (the
++ *        apm_cmd_header followed by the parameters). Pseudo opcodes:
++ *        Q6APM_RAW_MAP <u32 size>: allocate and map one shared buffer
++ *        Q6APM_RAW_FILL <u32 offset> <data>: copy data into that buffer
++ * read:  "status <s> handle <h> iova <a> size <n>", followed by the payload
++ *        of the last APM_CMD_RSP_GET_CFG as hex words, if any.
++ */
++#define Q6APM_RAW_TOKEN		0x52415700
++#define Q6APM_RAW_MAP		0xffff0001
++#define Q6APM_RAW_FILL		0xffff0002
++
++static int q6apm_raw_map(struct q6apm *apm, uint32_t size)
++{
++	struct apm_shared_map_region_payload *mregions;
++	struct apm_cmd_shared_mem_map_regions *cmd;
++	struct device *dev = apm->dais_dev;
++	struct gpr_pkt *pkt;
++	int ret;
++
++	if (!dev || apm->raw_buf || !size || size > SZ_1M)
++		return -EINVAL;
++
++	size = ALIGN(size, SZ_4K);
++	apm->raw_buf = dma_alloc_coherent(dev, size, &apm->raw_iova, GFP_KERNEL);
++	if (!apm->raw_buf)
++		return -ENOMEM;
++	apm->raw_size = size;
++
++	pkt = audioreach_alloc_apm_pkt(sizeof(*cmd) + sizeof(*mregions),
++				       APM_CMD_SHARED_MEM_MAP_REGIONS, Q6APM_RAW_TOKEN,
++				       GPR_APM_MODULE_IID);
++	if (IS_ERR(pkt))
++		return PTR_ERR(pkt);
++
++	cmd = (void *)pkt + GPR_HDR_SIZE;
++	cmd->mem_pool_id = APM_MEMORY_MAP_SHMEM8_4K_POOL;
++	cmd->num_regions = 1;
++	cmd->property_flag = 0;
++	mregions = (void *)cmd + sizeof(*cmd);
++	mregions->shm_addr_lsw = lower_32_bits(apm->raw_iova | apm->dais_sid);
++	mregions->shm_addr_msw = upper_32_bits(apm->raw_iova | apm->dais_sid);
++	mregions->mem_size_bytes = size;
++
++	ret = q6apm_send_cmd_sync(apm, pkt, APM_CMD_RSP_SHARED_MEM_MAP_REGIONS);
++	kfree(pkt);
++
++	return ret;
++}
++
++static ssize_t q6apm_raw_write(struct file *file, const char __user *ubuf,
++			       size_t len, loff_t *ppos)
++{
++	struct q6apm *apm = file->private_data;
++	struct gpr_pkt *pkt;
++	uint32_t *buf;
++	int ret;
++
++	if (len < 4 || len > SZ_64K)
++		return -EINVAL;
++
++	buf = memdup_user(ubuf, len);
++	if (IS_ERR(buf))
++		return PTR_ERR(buf);
++
++	switch (buf[0]) {
++	case Q6APM_RAW_MAP:
++		ret = len >= 8 ? q6apm_raw_map(apm, buf[1]) : -EINVAL;
++		break;
++	case Q6APM_RAW_FILL:
++		if (len < 8 || !apm->raw_buf || buf[1] > apm->raw_size ||
++		    len - 8 > apm->raw_size - buf[1]) {
++			ret = -EINVAL;
++			break;
++		}
++		memcpy(apm->raw_buf + buf[1], &buf[2], len - 8);
++		ret = 0;
++		break;
++	default:
++		pkt = audioreach_alloc_apm_pkt(len - 4, buf[0], Q6APM_RAW_TOKEN,
++					       GPR_APM_MODULE_IID);
++		if (IS_ERR(pkt)) {
++			ret = PTR_ERR(pkt);
++			break;
++		}
++		memcpy((void *)pkt + GPR_HDR_SIZE, &buf[1], len - 4);
++		ret = q6apm_send_cmd_sync(apm, pkt,
++					  buf[0] == APM_CMD_GET_CFG ? APM_CMD_RSP_GET_CFG : 0);
++		kfree(pkt);
++	}
++	kfree(buf);
++	apm->raw_status = ret ? ret : apm->result.status;
++
++	return ret ? ret : len;
++}
++
++static ssize_t q6apm_raw_read(struct file *file, char __user *ubuf,
++			      size_t len, loff_t *ppos)
++{
++	struct q6apm *apm = file->private_data;
++	size_t n = 0, sz = 128 + apm->raw_rsp_len * 3;
++	ssize_t ret;
++	char *s;
++	int i;
++
++	s = kzalloc(sz, GFP_KERNEL);
++	if (!s)
++		return -ENOMEM;
++	n += scnprintf(s + n, sz - n, "status %d handle 0x%x iova 0x%llx size %zu\n",
++		       apm->raw_status, apm->raw_handle, (u64)apm->raw_iova | apm->dais_sid,
++		       apm->raw_size);
++	for (i = 0; i + 4 <= apm->raw_rsp_len; i += 4)
++		n += scnprintf(s + n, sz - n, "%08x%c", *(u32 *)(apm->raw_rsp + i),
++			       (i / 4) % 8 == 7 ? '\n' : ' ');
++	ret = simple_read_from_buffer(ubuf, len, ppos, s, n);
++	kfree(s);
++
++	return ret;
++}
++
++static const struct file_operations q6apm_raw_fops = {
++	.open = simple_open,
++	.write = q6apm_raw_write,
++	.read = q6apm_raw_read,
++	.llseek = default_llseek,
++};
++
++/* responses to raw commands, from apm_callback() */
++static bool q6apm_raw_callback(struct q6apm *apm, const struct gpr_resp_pkt *data)
++{
++	const struct gpr_hdr *hdr = &data->hdr;
++	struct gpr_ibasic_rsp_result_t *result = data->payload;
++
++	if (hdr->token != Q6APM_RAW_TOKEN)
++		return false;
++
++	switch (hdr->opcode) {
++	case GPR_BASIC_RSP_RESULT:
++		apm->result.opcode = result->opcode;
++		apm->result.status = result->status;
++		if (result->status)
++			dev_err(apm->dev, "raw: error %d for 0x%08x\n", result->status,
++				result->opcode);
++		break;
++	case APM_CMD_RSP_SHARED_MEM_MAP_REGIONS:
++		apm->raw_handle = ((struct apm_cmd_rsp_shared_mem_map_regions *)
++				   data->payload)->mem_map_handle;
++		apm->result.opcode = hdr->opcode;
++		apm->result.status = 0;
++		break;
++	case APM_CMD_RSP_GET_CFG:
++		kfree(apm->raw_rsp);
++		apm->raw_rsp = kmemdup(data->payload, data->payload_size, GFP_ATOMIC);
++		apm->raw_rsp_len = apm->raw_rsp ? data->payload_size : 0;
++		apm->result.opcode = hdr->opcode;
++		apm->result.status = *(u32 *)data->payload;
++		break;
++	default:
++		return true;
++	}
++	wake_up(&apm->wait);
++
++	return true;
++}
++
++static void q6apm_raw_init(struct q6apm *apm)
++{
++	apm->raw_dentry = debugfs_create_file("q6apm_raw", 0600, NULL, apm,
++					      &q6apm_raw_fops);
++}
++
++static void q6apm_raw_exit(struct q6apm *apm)
++{
++	debugfs_remove(apm->raw_dentry);
++	if (apm->raw_buf)
++		dma_free_coherent(apm->dais_dev, apm->raw_size, apm->raw_buf,
++				  apm->raw_iova);
++	kfree(apm->raw_rsp);
++}
++
+ static int apm_probe(gpr_device_t *gdev)
+ {
+ 	struct device *dev = &gdev->dev;
++	struct of_phandle_args args;
++	struct platform_device *pdev;
++	struct device_node *np;
+ 	struct q6apm *apm;
+ 	int ret;
+ 
+@@ -892,14 +1415,31 @@ static int apm_probe(gpr_device_t *gdev)
+ 	}
+ 
+ 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
+-	if (ret)
++	if (ret) {
+ 		snd_soc_unregister_component(dev);
++		return ret;
++	}
+ 
+-	return ret;
++	np = of_get_child_by_name(dev->of_node, "dais");
++	pdev = np ? of_find_device_by_node(np) : NULL;
++	if (np && !of_parse_phandle_with_fixed_args(np, "iommus", 1, 0, &args))
++		apm->dais_sid = (u64)(args.args[0] & 0xf) << 32;
++	of_node_put(np);
++	if (pdev)
++		apm->dais_dev = &pdev->dev;
++
++	q6apm_raw_init(apm);
++
++	return 0;
+ }
+ 
+ static void apm_remove(gpr_device_t *gdev)
+ {
++	struct q6apm *apm = dev_get_drvdata(&gdev->dev);
++
++	q6apm_raw_exit(apm);
++	if (apm->dais_dev)
++		put_device(apm->dais_dev);
+ 	of_platform_depopulate(&gdev->dev);
+ 	snd_soc_unregister_component(&gdev->dev);
+ }
+@@ -926,6 +1466,9 @@ static int apm_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+ 
+ 	result = data->payload;
+ 
++	if (q6apm_raw_callback(apm, data))
++		return 0;
++
+ 	switch (hdr->opcode) {
+ 	case APM_CMD_RSP_GET_SPF_STATE:
+ 		apm->result.opcode = hdr->opcode;
+@@ -944,6 +1487,7 @@ static int apm_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+ 		case APM_CMD_GRAPH_FLUSH:
+ 		case APM_CMD_GRAPH_STOP:
+ 		case APM_CMD_SET_CFG:
++		case APM_CMD_REGISTER_CFG:
+ 			apm->result.opcode = result->opcode;
+ 			apm->result.status = result->status;
+ 			if (result->status)
+@@ -956,6 +1500,22 @@ static int apm_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+ 			apm->result.status = 0;
+ 			rsp = data->payload;
+ 
++			if (hdr->token == APM_MMAP_TOKEN_OOB) {
++				apm->oob_handle = 0;
++				apm->result.opcode = result->opcode;
++				wake_up(&apm->wait);
++				break;
++			}
++			if (hdr->token & APM_MMAP_TOKEN_MAP_TYPE_CAL) {
++				info = idr_find(&apm->graph_info_idr,
++						hdr->token & APM_MMAP_TOKEN_GID_MASK);
++				if (info)
++					info->cal_mem_map_handle = 0;
++				apm->result.opcode = result->opcode;
++				wake_up(&apm->wait);
++				break;
++			}
++
+ 			info = idr_find(&apm->graph_info_idr, hdr->token);
+ 			if (info)
+ 				info->mem_map_handle = 0;
+@@ -973,11 +1533,19 @@ static int apm_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+ 		apm->result.opcode = hdr->opcode;
+ 		apm->result.status = 0;
+ 		rsp = data->payload;
++
++		if (hdr->token == APM_MMAP_TOKEN_OOB) {
++			apm->oob_handle = rsp->mem_map_handle;
++			wake_up(&apm->wait);
++			break;
++		}
+ 		graph_id = hdr->token & APM_MMAP_TOKEN_GID_MASK;
+ 		is_pos_buf = hdr->token & APM_MMAP_TOKEN_MAP_TYPE_POS_BUF;
+ 
+ 		info = idr_find(&apm->graph_info_idr, graph_id);
+-		if (info) {
++		if (info && (hdr->token & APM_MMAP_TOKEN_MAP_TYPE_CAL)) {
++			info->cal_mem_map_handle = rsp->mem_map_handle;
++		} else if (info) {
+ 			if (is_pos_buf)
+ 				info->pos_buf_mem_map_handle = rsp->mem_map_handle;
+ 			else
+diff --git a/sound/soc/qcom/qdsp6/q6apm.h b/sound/soc/qcom/qdsp6/q6apm.h
+index 5cb51ca49..2d574a68b 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.h
++++ b/sound/soc/qcom/qdsp6/q6apm.h
+@@ -68,6 +68,23 @@ struct q6apm {
+ 	struct idr sub_graphs_idr;
+ 	struct idr containers_idr;
+ 	struct idr modules_idr;
++
++	/* device with the DSP's IOMMU mapping, for shared memory */
++	struct device *dais_dev;
++	/* its SMMU stream ID, which the DSP expects in address bits 32+ */
++	u64 dais_sid;
++	/* handle of the temporary mapping for an out-of-band command */
++	uint32_t oob_handle;
++
++	/* bring-up: raw APM command interface in debugfs */
++	struct dentry *raw_dentry;
++	void *raw_buf;
++	dma_addr_t raw_iova;
++	size_t raw_size;
++	uint32_t raw_handle;
++	int raw_status;
++	void *raw_rsp;
++	size_t raw_rsp_len;
+ };
+ 
+ struct audio_buffer {
+@@ -122,6 +139,8 @@ int q6apm_graph_stop(struct q6apm_graph *graph);
+ int q6apm_graph_flush(struct q6apm_graph *graph);
+ 
+ /* Media Format */
++bool q6apm_graph_is_hostless(struct q6apm_graph *graph);
++int q6apm_graph_hostless_config(struct q6apm_graph *graph, int dir);
+ int q6apm_graph_media_format_pcm(struct q6apm_graph *graph,
+ 				 struct audioreach_module_config *cfg);
+ 
+diff --git a/sound/soc/qcom/qdsp6/q6dsp-lpass-clocks.c b/sound/soc/qcom/qdsp6/q6dsp-lpass-clocks.c
+index 03838582a..d79aef55b 100644
+--- a/sound/soc/qcom/qdsp6/q6dsp-lpass-clocks.c
++++ b/sound/soc/qcom/qdsp6/q6dsp-lpass-clocks.c
+@@ -113,7 +113,7 @@ static struct clk_hw *q6dsp_of_clk_hw_get(struct of_phandle_args *clkspec,
+ 	unsigned int idx = clkspec->args[0];
+ 	unsigned int attr = clkspec->args[1];
+ 
+-	if (idx >= Q6DSP_MAX_CLK_ID || attr > LPASS_CLK_ATTRIBUTE_COUPLE_DIVISOR) {
++	if (idx >= Q6DSP_MAX_CLK_ID || attr > LPASS_CLK_ATTRIBUTE_INVERT_COUPLE_NO) {
+ 		dev_err(cc->dev, "Invalid clk specifier (%d, %d)\n", idx, attr);
+ 		return ERR_PTR(-EINVAL);
+ 	}
+diff --git a/sound/soc/qcom/qdsp6/q6prm-clocks.c b/sound/soc/qcom/qdsp6/q6prm-clocks.c
+index 4c574b48a..694c99115 100644
+--- a/sound/soc/qcom/qdsp6/q6prm-clocks.c
++++ b/sound/soc/qcom/qdsp6/q6prm-clocks.c
+@@ -25,6 +25,8 @@ static const struct q6dsp_clk_init q6prm_clks[] = {
+ 	Q6PRM_CLK(LPASS_CLK_ID_SEC_MI2S_EBIT),
+ 	Q6PRM_CLK(LPASS_CLK_ID_TER_MI2S_IBIT),
+ 	Q6PRM_CLK(LPASS_CLK_ID_TER_MI2S_EBIT),
++	Q6PRM_CLK(LPASS_CLK_ID_TER_TDM_IBIT),
++	Q6PRM_CLK(LPASS_CLK_ID_TER_TDM_EBIT),
+ 	Q6PRM_CLK(LPASS_CLK_ID_QUAD_MI2S_IBIT),
+ 	Q6PRM_CLK(LPASS_CLK_ID_QUAD_MI2S_EBIT),
+ 	Q6PRM_CLK(LPASS_CLK_ID_SPEAKER_I2S_IBIT),
+diff --git a/sound/soc/qcom/qdsp6/q6prm.h b/sound/soc/qcom/qdsp6/q6prm.h
+index a988a3208..5615a0168 100644
+--- a/sound/soc/qcom/qdsp6/q6prm.h
++++ b/sound/soc/qcom/qdsp6/q6prm.h
+@@ -16,6 +16,10 @@
+ /* Clock ID for Tertiary I2S EBIT */
+ #define Q6PRM_LPASS_CLK_ID_TER_MI2S_EBIT                          0x105
+ /* Clock ID for Quartnery I2S IBIT */
++/* Clock ID for tertiary TDM bit clock (internal), 516 in the vendor log */
++#define Q6PRM_LPASS_CLK_ID_TER_TDM_IBIT                           0x204
++/* Clock ID for tertiary TDM bit clock (external) */
++#define Q6PRM_LPASS_CLK_ID_TER_TDM_EBIT                           0x205
+ #define Q6PRM_LPASS_CLK_ID_QUAD_MI2S_IBIT                         0x106
+ /* Clock ID for Quartnery I2S EBIT */
+ #define Q6PRM_LPASS_CLK_ID_QUAD_MI2S_EBIT                         0x107
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 1f69fba6d..561efb3f5 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -305,32 +305,43 @@ audioreach_get_module_array(const struct snd_soc_tplg_private *private)
+ 	return NULL;
+ }
+ 
+-static struct audioreach_module_priv_data *
+-audioreach_get_module_priv_data(const struct snd_soc_tplg_private *private)
++/*
++ * Collect the configuration arrays of a module widget. Each array is an
++ * audioreach_module_priv_data header (size in bytes, including the header)
++ * followed by APM module parameters; priv[0] selects AR_MODULE_CFG_*.
++ */
++static int audioreach_load_module_cfg(struct audioreach_module *mod,
++				      const struct snd_soc_tplg_private *private)
+ {
+-	int sz;
+-
+-	for (sz = 0; sz < le32_to_cpu(private->size); ) {
+-		const struct snd_soc_tplg_vendor_array *mod_array;
+-
+-		mod_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
+-		if (le32_to_cpu(mod_array->type) == SND_SOC_AR_TPLG_MODULE_CFG_TYPE) {
+-			struct audioreach_module_priv_data *pdata;
+-
+-			pdata = kzalloc_flex(*pdata, data,
+-					     le32_to_cpu(mod_array->size));
+-			if (!pdata)
+-				return ERR_PTR(-ENOMEM);
+-
+-			memcpy(pdata, ((u8 *)private->data + sz), struct_size(pdata, data,
+-						le32_to_cpu(mod_array->size)));
+-			return pdata;
+-		}
+-
+-		sz = sz + le32_to_cpu(mod_array->size);
++	u32 total = le32_to_cpu(private->size);
++	u32 sz, size, kind;
++
++	for (sz = 0; sz + sizeof(struct audioreach_module_priv_data) <= total; sz += size) {
++		const struct audioreach_module_priv_data *pdata;
++		void *cfg;
++
++		pdata = (const void *)((const u8 *)private->data + sz);
++		size = le32_to_cpu(pdata->size);
++		if (size < sizeof(*pdata) || size > total - sz)
++			return -EINVAL;
++		if (le32_to_cpu(pdata->type) != SND_SOC_AR_TPLG_MODULE_CFG_TYPE)
++			continue;
++
++		kind = le32_to_cpu(pdata->priv[0]);
++		if (kind >= ARRAY_SIZE(mod->cfg))
++			return -EINVAL;
++
++		size -= sizeof(*pdata);
++		cfg = krealloc(mod->cfg[kind], mod->cfg_size[kind] + size, GFP_KERNEL);
++		if (!cfg)
++			return -ENOMEM;
++		memcpy(cfg + mod->cfg_size[kind], pdata->data, size);
++		mod->cfg[kind] = cfg;
++		mod->cfg_size[kind] += size;
++		size += sizeof(*pdata);
+ 	}
+ 
+-	return NULL;
++	return 0;
+ }
+ 
+ static struct audioreach_sub_graph *audioreach_parse_sg_tokens(struct q6apm *apm,
+@@ -597,6 +608,7 @@ static int audioreach_widget_load_module_common(struct snd_soc_component *compon
+ 	struct audioreach_sub_graph *sg;
+ 	struct audioreach_module *mod;
+ 	struct snd_soc_dobj *dobj;
++	int ret;
+ 
+ 	sg = audioreach_parse_sg_tokens(apm, &tplg_w->priv);
+ 	if (IS_ERR(sg))
+@@ -610,7 +622,9 @@ static int audioreach_widget_load_module_common(struct snd_soc_component *compon
+ 	if (IS_ERR_OR_NULL(mod))
+ 		return mod ? PTR_ERR(mod) : -ENODEV;
+ 
+-	mod->data = audioreach_get_module_priv_data(&tplg_w->priv);
++	ret = audioreach_load_module_cfg(mod, &tplg_w->priv);
++	if (ret)
++		return ret;
+ 
+ 	dobj = &w->dobj;
+ 	dobj->private = mod;
+@@ -951,6 +965,7 @@ static int audioreach_widget_unload(struct snd_soc_component *scomp,
+ 	struct q6apm *apm = dev_get_drvdata(scomp->dev);
+ 	struct audioreach_container *cont;
+ 	struct audioreach_module *mod;
++	int i;
+ 
+ 	if (w->id == snd_soc_dapm_mixer) {
+ 		/* virtual widget */
+@@ -971,7 +986,8 @@ static int audioreach_widget_unload(struct snd_soc_component *scomp,
+ 	cont->num_modules--;
+ 
+ 	list_del(&mod->node);
+-	kfree(mod->data);
++	for (i = 0; i < ARRAY_SIZE(mod->cfg); i++)
++		kfree(mod->cfg[i]);
+ 	kfree(mod);
+ 	/* Graph Info has N sub-graphs, sub-graph has N containers, Container has N Modules */
+ 	if (list_empty(&cont->modules_list)) { /* if no modules in the container then remove it */
+diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
+index 98b15a527..6a7c63562 100644
+--- a/sound/soc/qcom/sc8280xp.c
++++ b/sound/soc/qcom/sc8280xp.c
+@@ -2,7 +2,9 @@
+ // Copyright (c) 2022, Linaro Limited
+ 
+ #include <dt-bindings/sound/qcom,q6afe.h>
++#include <linux/clk.h>
+ #include <linux/module.h>
++#include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <sound/soc.h>
+ #include <sound/soc-dapm.h>
+@@ -21,8 +23,32 @@ struct sc8280xp_snd_data {
+ 	struct snd_soc_jack jack;
+ 	struct snd_soc_jack dp_jack[8];
+ 	bool jack_setup;
++	/* optional DSP bit clocks of the MI2S ports, enabled before the codecs */
++	struct clk *mi2s_clk[5];
++	unsigned int mi2s_bclk[5];
++	bool mi2s_clk_on[5];
+ };
+ 
++static const char * const sc8280xp_mi2s_clk_names[] = {
++	"primary-mi2s", "secondary-mi2s", "tertiary-mi2s",
++	"quaternary-mi2s", "quinary-mi2s",
++};
++
++static int sc8280xp_mi2s_index(unsigned int dai_id)
++{
++	switch (dai_id) {
++	case PRIMARY_MI2S_RX...QUATERNARY_MI2S_TX:
++		return (dai_id - PRIMARY_MI2S_RX) / 2;
++	case QUINARY_MI2S_RX...QUINARY_MI2S_TX:
++		return 4;
++	/* TDM on the same serial interface uses the same bit clock and codecs */
++	case PRIMARY_TDM_RX_0...QUINARY_TDM_TX_7:
++		return (dai_id - PRIMARY_TDM_RX_0) / 16;
++	default:
++		return -1;
++	}
++}
++
+ static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
+ {
+ 	struct sc8280xp_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+@@ -30,11 +56,38 @@ static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	struct snd_soc_card *card = rtd->card;
+ 	struct snd_soc_jack *dp_jack  = NULL;
+ 	int dp_pcm_id = 0;
++	struct snd_soc_dai *codec_dai;
++	int i;
+ 
+ 	switch (cpu_dai->id) {
+ 	case PRIMARY_MI2S_RX...QUATERNARY_MI2S_TX:
+ 	case QUINARY_MI2S_RX...QUINARY_MI2S_TX:
++	/* TDM framed like I2S (from the topology) for the same codecs */
++	case PRIMARY_TDM_RX_0...QUINARY_TDM_TX_7:
+ 		snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
++		/*
++		 * The DSP provides bit clock and frame sync; codecs follow.
++		 * With several codecs on one link (e.g. a pair of speaker
++		 * amplifiers), codec N takes slot N: left, right, ...
++		 *
++		 * A stereo pair also gets the other channel as its second
++		 * receive slot, as the vendor CS35L41 driver programs it
++		 * (cirrus,right-channel-amp: RX1 = 1, RX2 = 0). The speaker
++		 * protection firmware takes RX2 as the opposite channel; left
++		 * at its reset default (slot 1) the right amplifier receives
++		 * its own channel twice and the firmware keeps it silent.
++		 */
++		for_each_rtd_codec_dais(rtd, i, codec_dai) {
++			unsigned int slots[2] = { i, !i };
++
++			snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_CBC_CFC |
++					    SND_SOC_DAIFMT_I2S |
++					    SND_SOC_DAIFMT_NB_NF);
++			if (rtd->dai_link->num_codecs == 2)
++				snd_soc_dai_set_channel_map(codec_dai, 0, NULL, 2, slots);
++			else if (rtd->dai_link->num_codecs > 2)
++				snd_soc_dai_set_channel_map(codec_dai, 0, NULL, 1, slots);
++		}
+ 		break;
+ 	case WSA_CODEC_DMA_RX_0:
+ 	case WSA_CODEC_DMA_RX_1:
+@@ -85,7 +138,15 @@ static int sc8280xp_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+ 	case TX_CODEC_DMA_TX_0:
+ 	case TX_CODEC_DMA_TX_1:
+ 	case TX_CODEC_DMA_TX_2:
++		channels->min = 1;
++		break;
++	/*
++	 * Two microphones (e.g. Xiaomi Diting AMIC1 + AMIC5): keep both
++	 * channels, the voice call's dual-mic noise suppression needs them.
++	 */
+ 	case TX_CODEC_DMA_TX_3:
++		if ((of_machine_is_compatible("xiaomi,diting") || of_machine_is_compatible("xiaomi,unicorn")))
++			break;
+ 		channels->min = 1;
+ 		break;
+ 	default:
+@@ -96,11 +157,64 @@ static int sc8280xp_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+ 	return 0;
+ }
+ 
++/*
++ * MI2S codecs that clock themselves from the bit clock (e.g. CS35L41 speaker
++ * amplifiers) need its rate. Codecs without such a clock return -ENOTSUPP.
++ */
++static int sc8280xp_snd_hw_params(struct snd_pcm_substream *substream,
++				  struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct sc8280xp_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct snd_soc_dai *codec_dai;
++	int idx = sc8280xp_mi2s_index(cpu_dai->id);
++	unsigned int bclk;
++	int i, ret;
++
++	if (idx < 0)
++		return 0;
++
++	bclk = params_rate(params) * params_channels(params) *
++	       params_physical_width(params);
++	data->mi2s_bclk[idx] = bclk;
++
++	for_each_rtd_codec_dais(rtd, i, codec_dai) {
++		ret = snd_soc_component_set_sysclk(codec_dai->component, 0, 0,
++						   bclk, SND_SOC_CLOCK_IN);
++		if (ret && ret != -ENOTSUPP)
++			return ret;
++
++		ret = snd_soc_dai_set_sysclk(codec_dai, 0, bclk, SND_SOC_CLOCK_IN);
++		if (ret && ret != -ENOTSUPP)
++			return ret;
++	}
++
++	return 0;
++}
++
+ static int sc8280xp_snd_prepare(struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+ 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+ 	struct sc8280xp_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
++	int idx = sc8280xp_mi2s_index(cpu_dai->id);
++	int ret;
++
++	/*
++	 * The DSP starts the MI2S clocks only when the graph starts, after
++	 * DAPM has powered up the codecs. Codecs that lock a PLL to the bit
++	 * clock need it earlier: vote for it here.
++	 */
++	if (idx >= 0 && data->mi2s_clk[idx] && !data->mi2s_clk_on[idx]) {
++		ret = clk_set_rate(data->mi2s_clk[idx], data->mi2s_bclk[idx]);
++		if (ret)
++			return ret;
++		ret = clk_prepare_enable(data->mi2s_clk[idx]);
++		if (ret)
++			return ret;
++		data->mi2s_clk_on[idx] = true;
++	}
+ 
+ 	return qcom_snd_sdw_prepare(substream, &data->stream_prepared[cpu_dai->id]);
+ }
+@@ -110,6 +224,12 @@ static int sc8280xp_snd_hw_free(struct snd_pcm_substream *substream)
+ 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+ 	struct sc8280xp_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+ 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	int idx = sc8280xp_mi2s_index(cpu_dai->id);
++
++	if (idx >= 0 && data->mi2s_clk_on[idx]) {
++		clk_disable_unprepare(data->mi2s_clk[idx]);
++		data->mi2s_clk_on[idx] = false;
++	}
+ 
+ 	return qcom_snd_sdw_hw_free(substream, &data->stream_prepared[cpu_dai->id]);
+ }
+@@ -117,6 +237,7 @@ static int sc8280xp_snd_hw_free(struct snd_pcm_substream *substream)
+ static const struct snd_soc_ops sc8280xp_be_ops = {
+ 	.startup = qcom_snd_sdw_startup,
+ 	.shutdown = qcom_snd_sdw_shutdown,
++	.hw_params = sc8280xp_snd_hw_params,
+ 	.hw_free = sc8280xp_snd_hw_free,
+ 	.prepare = sc8280xp_snd_prepare,
+ };
+@@ -140,7 +261,7 @@ static int sc8280xp_platform_probe(struct platform_device *pdev)
+ 	struct snd_soc_card *card;
+ 	struct sc8280xp_snd_data *data;
+ 	struct device *dev = &pdev->dev;
+-	int ret;
++	int i, ret;
+ 
+ 	card = devm_kzalloc(dev, sizeof(*card), GFP_KERNEL);
+ 	if (!card)
+@@ -151,6 +272,14 @@ static int sc8280xp_platform_probe(struct platform_device *pdev)
+ 	if (!data)
+ 		return -ENOMEM;
+ 
++	for (i = 0; i < ARRAY_SIZE(sc8280xp_mi2s_clk_names); i++) {
++		data->mi2s_clk[i] = devm_clk_get_optional(dev, sc8280xp_mi2s_clk_names[i]);
++		if (IS_ERR(data->mi2s_clk[i]))
++			return dev_err_probe(dev, PTR_ERR(data->mi2s_clk[i]),
++					     "failed to get %s clock\n",
++					     sc8280xp_mi2s_clk_names[i]);
++	}
++
+ 	card->dev = dev;
+ 	dev_set_drvdata(dev, card);
+ 	snd_soc_card_set_drvdata(card, data);

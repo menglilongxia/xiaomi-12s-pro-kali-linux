@@ -1,0 +1,52 @@
+#!/bin/sh
+q="qmicli -d qrtr://0"
+
+# Wait for QMI UIM service (11)
+i=0
+while ! qrtr-lookup 2>/dev/null | awk '$1 == 11' | grep -q .; do
+    i=$((i + 1))
+    [ "$i" -ge 45 ] && exit 0
+    sleep 1
+done
+
+# Activate Primary GW USIM provisioning if a SIM is present
+i=0
+while :; do
+    status="$($q --uim-get-card-status 2>/dev/null)"
+    echo "$status" | grep -q "Primary GW:   slot" && break
+    slot=$(echo "$status" | awk '/^Slot \[/ { s = substr($2, 2, 1) } /Card state: .present./ { print s; exit }')
+    aid=$(echo "$status" | sed -n "/^Slot \[$slot\]/,/^Slot \[/p" |
+        awk '/Application type:  .usim/ { u = 1 } u && /Application ID:/ { getline; gsub(/[ \t]/, ""); print; exit }')
+    if [ -n "$slot" ] && [ -n "$aid" ]; then
+        $q --uim-change-provisioning-session="slot=$slot,activate=yes,session-type=primary-gw-provisioning,aid=$aid" && break
+    fi
+    i=$((i + 1))
+    [ "$i" -ge 20 ] && break
+    sleep 1
+done
+
+# Unlock full GSM/UMTS/LTE/5G NR selection and switch RF operating mode to online
+$q --nas-set-system-selection-preference="gsm|umts|lte|5gnr" >/dev/null 2>&1 || true
+
+i=0
+while [ "$i" -lt 15 ]; do
+    mode="$($q --dms-get-operating-mode 2>/dev/null || true)"
+    echo "$mode" | grep -q "Mode: 'online'" && break
+    $q --dms-set-operating-mode=online >/dev/null 2>&1 || true
+    i=$((i + 1))
+    sleep 2
+done
+
+# Enable ModemManager modem if available so qrtr0 is ready in NetworkManager
+if command -v mmcli >/dev/null 2>&1; then
+    i=0
+    while [ "$i" -lt 15 ]; do
+        if mmcli -L 2>/dev/null | grep -q "/Modem/"; then
+            mmcli -m any -e >/dev/null 2>&1 || true
+            break
+        fi
+        i=$((i + 1))
+        sleep 1
+    done
+fi
+exit 0

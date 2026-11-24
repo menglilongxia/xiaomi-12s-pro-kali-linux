@@ -1,0 +1,11 @@
+[Unit]
+Description=Xiaomi 12S Pro (unicorn) CPU/VM Performance Tuning
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/unicorn-perf.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Xiaomi 12S Pro Wi-Fi 6 7x24 Auto-Reconnect Watchdog
+After=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/unicorn-wifi-watchdog
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

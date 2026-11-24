@@ -1,0 +1,12 @@
+[Unit]
+Description=Xiaomi 12S Pro 7x24 Hardware Battery Swelling Guard (USB Bypass at 80%)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/unicorn-batt-guard
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

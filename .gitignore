@@ -1,0 +1,38 @@
+# Build artifacts and boot images
+out/
+*.img
+*.dtb
+*.dtbo
+*.ko
+*.o
+*.mod
+*.mod.c
+*.cmd
+*.order
+*.symvers
+*.efi
+*.bin
+*.cpio.gz
+
+# Proprietary firmware & vendor dumps (never commit)
+*.mbn
+*.mdt
+*.b[0-9][0-9]
+*.jsn
+*.camregs
+*.fw
+firmware/
+
+# Personal/local files, keys, logs, screenshots
+*.png
+*.jpg
+*.jpeg
+*.raw
+*.ppm
+*.log
+*.bak*
+*.key
+*.pem
+id_*
+.DS_Store
+__pycache__/

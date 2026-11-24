@@ -1,0 +1,13 @@
+[Unit]
+Description=Patched SM8475 Sensor DSP file server (hexagonrpcd) for Xiaomi 12S Pro
+ConditionPathExists=/dev/fastrpc-sdsp
+Before=iio-sensor-proxy.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hexagonrpcd-unicorn -f /dev/fastrpc-sdsp -d sdsp -s -R /usr/share/qcom/sm8475/Xiaomi/unicorn
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

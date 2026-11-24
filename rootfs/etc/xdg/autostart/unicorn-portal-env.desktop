@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Unicorn Portal Environment Sync
+Exec=/bin/sh -c 'dbus-update-activation-environment --systemd DISPLAY XAUTHORITY XDG_RUNTIME_DIR; systemctl --user restart xdg-desktop-portal-gtk xdg-desktop-portal'
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

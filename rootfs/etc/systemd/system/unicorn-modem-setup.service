@@ -1,0 +1,14 @@
+[Unit]
+Description=Prepare Xiaomi 12S Pro 5G Modem for ModemManager
+After=rmtfs.service tqftpserv.service
+Wants=rmtfs.service tqftpserv.service
+Before=ModemManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/unicorn-modem-setup
+TimeoutStartSec=90
+
+[Install]
+WantedBy=ModemManager.service

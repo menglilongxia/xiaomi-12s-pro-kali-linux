@@ -1,0 +1,11 @@
+[Unit]
+Description=Ensure Xiaomi 12S Pro Rear Triple 50MP Cameras are Bound
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'if [ ! -e /sys/bus/i2c/drivers/s5kjn1/4-003d ]; then sleep 1; echo 4-003d > /sys/bus/i2c/drivers/s5kjn1/bind 2>/dev/null || true; fi'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

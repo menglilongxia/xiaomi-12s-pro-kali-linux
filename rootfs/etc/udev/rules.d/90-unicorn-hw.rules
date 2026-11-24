@@ -1,0 +1,7 @@
+# Rear Dual-LED Camera Torch/Flashlight
+SUBSYSTEM=="leds", KERNEL=="*:flash*", RUN+="/bin/chmod 0666 /sys/class/leds/%k/brightness"
+# Xiaomi IR Blaster
+KERNEL=="lirc[0-9]*", MODE="0666"
+# Qualcomm IRIS2 Hardware Video Decoder & FastRPC DSP
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0666"
+KERNEL=="fastrpc-*", MODE="0666"

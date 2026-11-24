@@ -1,0 +1,1 @@
+KERNEL=="fastrpc-sdsp", TAG+="systemd", ENV{SYSTEMD_WANTS}+="unicorn-sensors.service"

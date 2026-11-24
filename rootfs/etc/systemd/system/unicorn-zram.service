@@ -1,0 +1,11 @@
+[Unit]
+Description=Configure 4 GiB zstd zram swap for Xiaomi 12S Pro
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/unicorn-zram-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

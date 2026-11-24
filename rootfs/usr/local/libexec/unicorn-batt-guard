@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+BAT=/sys/class/power_supply/qcom-battmgr-bat
+USB=/sys/class/power_supply/qcom-battmgr-usb
+CONF=/etc/unicorn-batt-guard.conf
+
+while true; do
+    ENABLED=yes; STOP_SOC=80; START_SOC=65; MAX_TEMP_C=43; FAST_FCC_UA=2000000
+    [ -r "$CONF" ] && source "$CONF"
+
+    if [ -w "$BAT/constant_charge_current" ]; then
+        ONLINE=$(cat "$USB/online" 2>/dev/null || echo 0)
+        CAP=$(cat "$BAT/capacity" 2>/dev/null || echo 50)
+        TEMP10=$(cat "$BAT/temp" 2>/dev/null || echo 300)
+        CUR_FCC=$(cat "$BAT/constant_charge_current" 2>/dev/null || echo "$FAST_FCC_UA")
+
+        if [ "$ENABLED" != "yes" ]; then
+            if [ "$CUR_FCC" -eq 0 ]; then
+                echo "$FAST_FCC_UA" > "$BAT/constant_charge_current" 2>/dev/null || true
+                logger -t unicorn-batt-guard "Charge guard disabled -> resumed charging (FCC=$FAST_FCC_UA)"
+            fi
+        elif [ "$ONLINE" = "1" ]; then
+            if [ "$CAP" -ge "$STOP_SOC" ] || [ "$TEMP10" -ge $((MAX_TEMP_C * 10)) ]; then
+                if [ "$CUR_FCC" -ne 0 ]; then
+                    echo 0 > "$BAT/constant_charge_current" 2>/dev/null || true
+                    logger -t unicorn-batt-guard "Bypass ACTIVE (cap=${CAP}% >= ${STOP_SOC}% or temp=${TEMP10}/10C): FCC=0"
+                fi
+            elif [ "$CAP" -le "$START_SOC" ] && [ "$TEMP10" -lt $(((MAX_TEMP_C - 3) * 10)) ]; then
+                if [ "$CUR_FCC" -eq 0 ]; then
+                    echo "$FAST_FCC_UA" > "$BAT/constant_charge_current" 2>/dev/null || true
+                    logger -t unicorn-batt-guard "Resumed fast charge (cap=${CAP}% <= ${START_SOC}%): FCC=$FAST_FCC_UA"
+                fi
+            fi
+        fi
+    fi
+    sleep 30
+done
